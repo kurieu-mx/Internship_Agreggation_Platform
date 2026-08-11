@@ -70,7 +70,7 @@ class _Session:
 
 @pytest.fixture(autouse=True)
 def no_sleep(monkeypatch):
-    monkeypatch.setattr("scrapers.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("sources.simplify.time.sleep", lambda seconds: None)
 
 
 def test_fetch_retries_then_succeeds():
@@ -95,3 +95,46 @@ def test_fetch_rejects_non_list_payload(monkeypatch):
     scraper = ListingsFeedScraper(url="https://example.invalid/x.json", session=session)
     with pytest.raises(FeedError):
         scraper.fetch()
+
+
+# -- de-duplication key normalisation ----------------------------------------
+#
+# Sources transcribe the same title inconsistently. An exact-match key lets the
+# same role through twice, and in a top-eight shortlist that costs a slot a
+# different company should have had.
+
+
+def test_ampersand_and_the_word_and_are_the_same_posting():
+    """Observed live: ByteDance's data-lake role arrived spelled both ways."""
+    a = Job(company="ByteDance", title="Data Lake Infrastructure & Data Analytics Intern")
+    b = Job(company="ByteDance", title="Data Lake Infrastructure and Data Analytics Intern")
+    assert a.key == b.key
+
+
+def test_punctuation_differences_do_not_split_a_posting():
+    a = Job(company="Acme, Inc.", title="Software Engineer Intern - Platform")
+    b = Job(company="Acme Inc", title="Software Engineer Intern, Platform")
+    assert a.key == b.key
+
+
+def test_a_trailing_term_suffix_is_ignored():
+    a = Job(company="Acme", title="Software Engineer Intern (Summer 2027)")
+    b = Job(company="Acme", title="Software Engineer Intern")
+    assert a.key == b.key
+
+
+def test_a_trailing_requisition_id_is_ignored():
+    a = Job(company="Acme", title="Software Engineer Intern (Req 12345)")
+    b = Job(company="Acme", title="Software Engineer Intern")
+    assert a.key == b.key
+
+
+def test_genuinely_different_roles_still_differ():
+    """The normalisation must not be so eager that distinct roles collide."""
+    assert Job(company="Acme", title="Software Engineer Intern").key != \
+           Job(company="Acme", title="Machine Learning Intern").key
+    assert Job(company="Acme", title="SWE Intern").key != \
+           Job(company="Globex", title="SWE Intern").key
+    # A meaningful qualifier in the middle is not noise.
+    assert Job(company="Acme", title="Backend Engineer Intern").key != \
+           Job(company="Acme", title="Frontend Engineer Intern").key

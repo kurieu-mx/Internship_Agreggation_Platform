@@ -1,0 +1,151 @@
+name: Daily internship digest
+
+# GitHub's scheduler is UTC-only, so hitting 3pm local year-round takes two
+# entries plus a guard. One fires during CDT, the other during CST; the guard
+# below exits the run that is an hour off, so exactly one proceeds on any given
+# day. A single UTC cron would drift by an hour twice a year.
+on:
+  schedule:
+    - cron: '0 20 * * *'   # 15:00 America/Chicago while CDT
+    - cron: '0 21 * * *'   # 15:00 America/Chicago while CST
+  workflow_dispatch:
+    inputs:
+      window_hours:
+        description: 'How far back to look (hours)'
+        required: false
+        default: '24'
+      top_n:
+        description: 'How many postings get tailored documents'
+        required: false
+        default: '8'
+      dry_run:
+        description: 'Build everything but send nothing'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  # Never let two digests run at once: they would each see the postings as
+  # unsent and both send them.
+  group: daily-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Is it 3pm where it matters?
+        id: clock
+        run: |
+          HOUR=$(TZ="${DIGEST_TIMEZONE:-America/Chicago}" date +%H)
+          echo "local hour: $HOUR"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "manual run - proceeding"
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          elif [ "$HOUR" = "15" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "not 3pm locally - this is the off-season cron, stopping"
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          DIGEST_TIMEZONE: ${{ vars.DIGEST_TIMEZONE }}
+
+      - uses: actions/checkout@v4
+        if: steps.clock.outputs.go == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.clock.outputs.go == 'true'
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: System dependencies
+        if: steps.clock.outputs.go == 'true'
+        run: |
+          sudo apt-get update -qq
+          # poppler-utils: pdftotext, used by the render guardrails.
+          # fonts-urw-base35: Nimbus Roman, metric-identical to the Times face
+          #   in the master resume. Without it the rebuild silently falls back
+          #   to a different face and the layout stops matching.
+          sudo apt-get install -y -qq --no-install-recommends \
+            poppler-utils fonts-urw-base35 \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libcairo2
+
+      - name: Python dependencies
+        if: steps.clock.outputs.go == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore the seen/sent database
+        if: steps.clock.outputs.go == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          # Without this every run starts blank, every posting looks new, and
+          # the same jobs are emailed again the next day.
+          path: internships.db
+          key: digest-db-${{ github.run_id }}
+          restore-keys: |
+            digest-db-
+
+      - name: Restore the profile
+        if: steps.clock.outputs.go == 'true'
+        env:
+          PROFILE_YML: ${{ secrets.PROFILE_YML }}
+          MASTER_PDF_B64: ${{ secrets.MASTER_PDF_B64 }}
+        run: |
+          # profile/ is git-ignored - it holds a real phone number and address -
+          # so it arrives as secrets rather than living in the repository.
+          mkdir -p profile
+          printf '%s' "$PROFILE_YML" > profile/profile.yml
+          if [ -n "$MASTER_PDF_B64" ]; then
+            printf '%s' "$MASTER_PDF_B64" | base64 -d > profile/master.pdf
+          fi
+          test -s profile/profile.yml || { echo "PROFILE_YML secret is empty"; exit 1; }
+
+      - name: Pre-flight
+        if: steps.clock.outputs.go == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          COMPOSIO_USER_ID: ${{ secrets.COMPOSIO_USER_ID }}
+          DIGEST_TO: ${{ secrets.DIGEST_TO }}
+        run: python main.py --doctor
+
+      - name: Run the digest
+        if: steps.clock.outputs.go == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          COMPOSIO_USER_ID: ${{ secrets.COMPOSIO_USER_ID }}
+          DIGEST_TO: ${{ secrets.DIGEST_TO }}
+          MODEL_SCORING: ${{ vars.MODEL_SCORING }}
+          MODEL_TAILORING: ${{ vars.MODEL_TAILORING }}
+          MODEL_RESEARCH: ${{ vars.MODEL_RESEARCH }}
+        run: |
+          ARGS="--digest"
+          [ -n "${{ inputs.window_hours }}" ] && ARGS="$ARGS --window ${{ inputs.window_hours }}"
+          [ -n "${{ inputs.top_n }}" ] && ARGS="$ARGS --top ${{ inputs.top_n }}"
+          [ "${{ inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
+          python main.py $ARGS
+
+      - name: Save the seen/sent database
+        # `always()`: if the send failed, the postings are deliberately still
+        # unrecorded, and that state must persist so tomorrow retries them.
+        if: always() && steps.clock.outputs.go == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: internships.db
+          key: digest-db-${{ github.run_id }}
+
+      - name: Keep the generated documents
+        if: always() && steps.clock.outputs.go == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ github.run_id }}
+          path: out/
+          retention-days: 7
+          if-no-files-found: ignore

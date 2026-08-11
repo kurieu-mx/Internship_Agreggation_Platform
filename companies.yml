@@ -1,0 +1,108 @@
+# Company job boards polled directly, grouped by ATS.
+#
+# Every token here was verified against the live API - a token that 404s is
+# skipped at runtime with a debug log, but there is no reason to ship dead
+# ones. Re-verify with `python main.py --check-boards` after editing.
+#
+# Two accepted forms per entry:
+#   - token                      # display name derived from the token
+#   - {token: t, name: Proper}   # display name given
+#
+# Greenhouse returns its own `company_name`, so names there are only a
+# fallback. Lever and Ashby do not, so the name given here is what shows up in
+# the digest - worth setting when the token reads badly.
+
+greenhouse:
+  # --- quant / trading ---
+  - {token: janestreet, name: Jane Street}
+  - {token: jumptrading, name: Jump Trading}
+  - {token: imc, name: IMC Trading}
+  - {token: point72, name: Point72}
+  - {token: optiver, name: Optiver}
+  # --- AI / ML ---
+  - {token: anthropic, name: Anthropic}
+  - {token: scaleai, name: Scale AI}
+  - {token: databricks, name: Databricks}
+  # --- robotics / autonomy (closest to the Merlin Drones work) ---
+  - {token: waymo, name: Waymo}
+  - {token: nuro, name: Nuro}
+  - {token: andurilindustries, name: Anduril}
+  - {token: samsara, name: Samsara}
+  - {token: verkada, name: Verkada}
+  # --- infrastructure / developer tools ---
+  - {token: cloudflare, name: Cloudflare}
+  - {token: datadog, name: Datadog}
+  - {token: mongodb, name: MongoDB}
+  - {token: elastic, name: Elastic}
+  - {token: gitlab, name: GitLab}
+  - {token: okta, name: Okta}
+  - {token: twilio, name: Twilio}
+  - {token: vercel, name: Vercel}
+  - {token: temporaltechnologies, name: Temporal}
+  # --- fintech ---
+  - {token: stripe, name: Stripe}
+  - {token: robinhood, name: Robinhood}
+  - {token: coinbase, name: Coinbase}
+  - {token: brex, name: Brex}
+  - {token: affirm, name: Affirm}
+  - {token: chime, name: Chime}
+  - {token: sofi, name: SoFi}
+  # --- consumer / marketplace ---
+  - {token: airbnb, name: Airbnb}
+  - {token: lyft, name: Lyft}
+  - {token: instacart, name: Instacart}
+  - {token: doordashusa, name: DoorDash}
+  - {token: reddit, name: Reddit}
+  - {token: pinterest, name: Pinterest}
+  - {token: discord, name: Discord}
+  - {token: figma, name: Figma}
+  - {token: asana, name: Asana}
+  - {token: dropbox, name: Dropbox}
+  - {token: flexport, name: Flexport}
+  - {token: squarespace, name: Squarespace}
+  - {token: duolingo, name: Duolingo}
+  - {token: airtable, name: Airtable}
+  # --- games ---
+  - {token: roblox, name: Roblox}
+  - {token: riotgames, name: Riot Games}
+  - {token: epicgames, name: Epic Games}
+
+lever:
+  - {token: palantir, name: Palantir}
+  - {token: shieldai, name: Shield AI}
+  - {token: matchgroup, name: Match Group}
+  - {token: plaid, name: Plaid}
+  - {token: kraken, name: Kraken}
+  - {token: mistral, name: Mistral AI}
+
+ashby:
+  # --- AI labs and AI infrastructure ---
+  - {token: openai, name: OpenAI}
+  - {token: perplexity, name: Perplexity}
+  - {token: cognition, name: Cognition}
+  - {token: cursor, name: Cursor}
+  - {token: harvey, name: Harvey}
+  - {token: sierra, name: Sierra}
+  - {token: decagon, name: Decagon}
+  - {token: elevenlabs, name: ElevenLabs}
+  - {token: suno, name: Suno}
+  - {token: runway, name: Runway}
+  - {token: sesame, name: Sesame}
+  - {token: reflectionai, name: Reflection AI}
+  - {token: thinkingmachines, name: Thinking Machines Lab}
+  - {token: physicalintelligence, name: Physical Intelligence}
+  # --- accelerators / novel compute ---
+  - {token: etched, name: Etched}
+  - {token: extropic, name: Extropic}
+  - {token: normalcomputing, name: Normal Computing}
+  # --- ML infrastructure ---
+  - {token: modal, name: Modal}
+  - {token: baseten, name: Baseten}
+  - {token: anyscale, name: Anyscale}
+  # --- product / fintech ---
+  - {token: ramp, name: Ramp}
+  - {token: notion, name: Notion}
+  - {token: linear, name: Linear}
+  - {token: replit, name: Replit}
+  - {token: deel, name: Deel}
+  - {token: mercury, name: Mercury}

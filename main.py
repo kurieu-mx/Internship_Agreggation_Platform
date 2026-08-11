@@ -16,8 +16,8 @@ from typing import List
 import config
 from enrichment import Enricher
 from models import Job
-from scrapers import FeedError, ListingsFeedScraper, deduplicate
 from sheets import summarize
+from sources import FeedError, build_sources, collect, deduplicate
 
 log = logging.getLogger("internship-scraper")
 
@@ -44,6 +44,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--category", help="keep only this field category (substring match)")
     parser.add_argument(
+        "--sources",
+        help="comma-separated sources to run (default: %s)" % ",".join(config.SOURCES),
+    )
+    parser.add_argument(
+        "--check-boards",
+        action="store_true",
+        help="verify every board token in companies.yml still resolves, then exit",
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="report what is configured, what is missing, and how to fix it",
+    )
+    parser.add_argument(
+        "--check-handshake",
+        action="store_true",
+        help="probe Handshake with your session cookie and report what came back",
+    )
+    parser.add_argument(
+        "--import-cookie",
+        metavar="FILE",
+        help="extract a session cookie from a DevTools 'Copy as cURL' dump "
+             "and write it to .env",
+    )
+    parser.add_argument(
         "--format",
         choices=["table", "csv", "json"],
         default="table",
@@ -59,6 +84,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--sheets", action="store_true", help="append results to the configured Google Sheet"
     )
     parser.add_argument(
+        "--digest", action="store_true",
+        help="run the full daily pipeline: score, tailor, render and send",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="with --digest: build everything and print it, but send nothing",
+    )
+    parser.add_argument("--window", type=int, metavar="HOURS",
+                        help="with --digest: how far back a posting may have been posted")
+    parser.add_argument("--top", type=int, metavar="N",
+                        help="with --digest: how many postings get tailored documents")
+    parser.add_argument("--to", metavar="EMAIL", help="with --digest: override the recipient")
+    parser.add_argument("--skip-cover", action="store_true",
+                        help="with --digest: skip cover letters (faster, cheaper)")
+    parser.add_argument("--cover-preview", metavar="COMPANY",
+                        help="build one cover letter from a stored posting, for "
+                             "iterating on the design without a full run")
+    parser.add_argument("--no-research", action="store_true",
+                        help="with --cover-preview: placeholder text, no API calls")
+    parser.add_argument(
         "--schedule",
         metavar="HH:MM",
         help="run once now, then daily at this time (24h clock)",
@@ -67,11 +112,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def collect(args) -> List[Job]:
-    """Fetch, filter and de-duplicate; enrich if requested."""
+def gather(args) -> List[Job]:
+    """Fetch from every configured source, filter and de-duplicate."""
     config.TERM_FILTER = args.term if args.term is not None else config.TERM_FILTER
 
-    jobs = deduplicate(ListingsFeedScraper().scrape())
+    names = args.sources.split(",") if args.sources else config.SOURCES
+    jobs = deduplicate(collect(build_sources([n.strip() for n in names if n.strip()])))
 
     if args.category:
         needle = args.category.lower()
@@ -148,9 +194,45 @@ def emit(jobs: List[Job], args) -> None:
         writer(jobs, sys.stdout)
 
 
+def check_boards() -> int:
+    """Verify every token in companies.yml still resolves.
+
+    Board tokens rot: companies rebrand, migrate ATS, or take their board
+    private, and a dead token is silent at runtime by design. This makes the
+    rot visible on demand rather than letting the file quietly decay.
+    """
+    from sources.ats import load_boards
+    from sources.ashby import AshbySource
+    from sources.greenhouse import GreenhouseSource
+    from sources.lever import LeverSource
+
+    sources = {
+        "greenhouse": GreenhouseSource,
+        "lever": LeverSource,
+        "ashby": AshbySource,
+    }
+
+    dead = 0
+    for kind, factory in sources.items():
+        boards = load_boards(kind)
+        source = factory(boards=[])
+        print(f"\n{kind} ({len(boards)} boards)")
+        for board in boards:
+            try:
+                payload = source.fetch_json(source.board_url(board))
+                found = source.parse_board(board, payload)
+                print(f"  ok    {board.token:28s} {len(found):3d} matching postings")
+            except Exception as exc:
+                dead += 1
+                print(f"  DEAD  {board.token:28s} {type(exc).__name__}: {exc}")
+
+    print(f"\n{dead} unreachable board(s).")
+    return 1 if dead else 0
+
+
 def run_once(args) -> int:
     try:
-        jobs = collect(args)
+        jobs = gather(args)
     except FeedError as exc:
         log.error("%s", exc)
         return 1
@@ -178,6 +260,42 @@ def main(argv=None) -> int:
         format="%(levelname)s %(message)s",
         stream=sys.stderr,
     )
+    # These libraries log every HTTP round trip at INFO. A digest makes ~60 of
+    # them, which buries the lines that actually say what the run decided.
+    if not args.verbose:
+        for noisy in ("httpx", "httpcore", "composio", "weasyprint",
+                      "fontTools", "urllib3", "anthropic"):
+            logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    if args.doctor:
+        import doctor
+
+        return doctor.run()
+
+    if args.cover_preview:
+        import cover_preview
+
+        return cover_preview.run(args.cover_preview, no_research=args.no_research)
+
+    if args.digest:
+        import digest
+
+        return digest.run(window_hours=args.window, top_n=args.top,
+                          dry_run=args.dry_run, to=args.to,
+                          skip_cover=args.skip_cover)
+
+    if args.import_cookie:
+        import import_cookie
+
+        return import_cookie.run(args.import_cookie)
+
+    if args.check_handshake:
+        from sources.handshake import HandshakeSource
+
+        return HandshakeSource().diagnose()
+
+    if args.check_boards:
+        return check_boards()
 
     status = run_once(args)
     if not args.schedule:

@@ -1,6 +1,14 @@
 requests>=2.31,<3
 python-dotenv>=1.0,<2
 schedule>=1.2,<2
+PyYAML>=6.0,<7          # companies.yml (direct-ATS board tokens)
+
+# Digest: scoring, tailoring, and delivery
+anthropic>=0.40,<1      # posting/profile match scoring and tailoring
+composio>=0.19,<1       # web search + Gmail delivery
+weasyprint>=61,<70      # HTML -> PDF renderer backend
+Jinja2>=3.1,<4          # resume and cover-letter templates
+pypdf>=4.0,<7           # page-count and text guardrails on generated PDFs
 
 # Google Sheets output (only needed for --sheets)
 google-api-python-client>=2.108,<3

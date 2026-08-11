@@ -1,0 +1,207 @@
+{#
+  Reproduction of profile/master.pdf.
+
+  Every measurement below was read off the original with PyMuPDF rather than
+  eyeballed, which is what makes this a reproduction rather than a lookalike:
+
+    page          612 x 792pt (US Letter), rules span x=26 -> x=586
+    body font     Times-Roman 10pt  (Nimbus Roman is metric-identical)
+    name          Times-Bold 16pt, centred, baseline y=28
+    contact       Times-Roman 9pt, centred, baseline y=48
+    section head  faux small caps: 11pt initial + 9pt rest, Times-Bold
+    section rule  0.75pt, 13pt below the header baseline
+    text indent   x=36  (10pt in from the rule)
+    bullet glyph  x=42, text x=45.5, wrap x=51.5
+    body leading  13pt; within a wrapped bullet, 12pt
+
+  The faux small caps matter: the original does not use a small-caps font, it
+  sets the first letter larger than the rest. Using real `font-variant:
+  small-caps` renders visibly differently, so the effect is rebuilt literally.
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ profile.name }} — Resume</title>
+<style>
+  @page {
+    size: 612pt 792pt;          /* US Letter, stated in points to match exactly */
+    margin: 26pt;
+  }
+
+  html { font-size: 10pt; }
+
+  body {
+    /* Nimbus Roman is the metric-compatible clone of Times-Roman, the font in
+       the original. Liberation Serif matches Times New Roman, which is close
+       but not the same face, so it is only the fallback. */
+    font-family: "Nimbus Roman", "Times", "Liberation Serif", "Times New Roman", serif;
+    font-size: 10pt;
+    line-height: 13pt;
+    margin: 0;
+    color: #000;
+  }
+
+  /* -- header ------------------------------------------------------------ */
+
+  /* Every margin below was tuned by measuring span baselines in the rebuild
+     against the same baselines in master.pdf, then closing the gap. They look
+     arbitrary because they are empirical - see `make verify-render`, which
+     re-checks them on every template change. */
+
+  .name {
+    font-size: 16pt;
+    font-weight: bold;
+    text-align: center;
+    margin: 0 0 2.2pt 0;
+    line-height: 18pt;
+  }
+
+  .contact {
+    font-size: 9pt;
+    text-align: center;
+    margin: 0 0 4.8pt 0;
+    line-height: 11pt;
+  }
+  .contact a { color: #000; text-decoration: none; }
+
+  /* -- sections ---------------------------------------------------------- */
+
+  h2.section {
+    font-weight: bold;
+    margin: 6.4pt 0 0 0;
+    padding: 0 0 1pt 0;
+    border-bottom: 0.75pt solid #000;
+    line-height: 11pt;
+    /* The rule spans the full text column, i.e. margin to margin. */
+  }
+  /* Faux small caps, as in the original: large initial, smaller remainder. */
+  h2.section .initial { font-size: 11pt; }
+  h2.section .rest    { font-size: 9pt; }
+
+  .section-body { padding: 0 0 0 10pt; }   /* x=36 against a 26pt margin */
+
+  /* -- entries ----------------------------------------------------------- */
+
+  .entry { margin-top: 3pt; }
+  .entry:first-child { margin-top: 0.9pt; }
+
+  /* Title left, dates right, on one baseline. A table is used rather than
+     flex because it is what WeasyPrint lays out most predictably, and the
+     right column must sit hard against the margin. */
+  .row { width: 100%; border-collapse: collapse; }
+  .row td { padding: 0; vertical-align: baseline; }
+  .row td.right { text-align: right; white-space: nowrap; }
+
+  .title  { font-weight: bold; }
+  .org    { font-style: italic; }
+  .where  { font-style: italic; }
+
+  p.summary { margin: 0.9pt 0 0 0; text-align: left; }
+
+  /* -- bullets ----------------------------------------------------------- */
+
+  /* Negative top margin is deliberate: the master sets its first bullet only
+     10.8pt below the company line, which is tighter than one line box, so the
+     list has to be pulled up into the preceding row's leading. */
+  ul { margin: -1.9pt 0 0 0; padding: 0 0 0 16pt; list-style: none; }
+  li {
+    margin: 0 0 0 0;
+    padding: 0 0 0 9.5pt;      /* text at x=45.5, wrap aligned under it */
+    text-indent: -9.5pt;        /* pulls the glyph back to x=42 */
+    line-height: 12.1pt;
+  }
+  li::before {
+    content: "\2022";
+    /* Helvetica in the original — the one non-Times glyph on the page. */
+    font-family: "Nimbus Sans", "Helvetica", "Liberation Sans", sans-serif;
+    display: inline-block;
+    width: 9.5pt;
+    text-indent: 0;
+  }
+
+  .project-name { font-weight: bold; }
+  .project-stack { font-style: italic; }
+
+  .skills p { margin: 1pt 0 0 0; }
+  .skills .label { font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div class="name">{{ profile.name }}</div>
+<div class="contact">
+  {{ profile.contact.email }} | {{ profile.contact.phone }}
+  {%- for link in profile.contact.links %} | <a href="{{ link.url }}">{{ link.url }}</a>{% endfor %}
+</div>
+
+{% macro section(title) %}
+  <h2 class="section"><span class="initial">{{ title[0] }}</span><span class="rest">{{ title[1:]|upper }}</span></h2>
+{% endmacro %}
+
+{% if summary %}
+{{ section("Professional Summary") }}
+<div class="section-body"><p class="summary">{{ summary }}</p></div>
+{% endif %}
+
+{{ section("Education") }}
+<div class="section-body">
+  {% for school in profile.education %}
+  <div class="entry">
+    <table class="row"><tr>
+      <td class="title">{{ school.school }}</td>
+      <td class="right">{{ school.location }}</td>
+    </tr></table>
+    <table class="row"><tr>
+      <td class="org">{{ school.degree }}</td>
+      <td class="right"><span class="where">{{ school.dates }}</span></td>
+    </tr></table>
+  </div>
+  {% endfor %}
+</div>
+
+{{ section("Experience") }}
+<div class="section-body">
+  {% for role in experience %}
+  <div class="entry">
+    <table class="row"><tr>
+      <td class="title">{{ role.title }}</td>
+      <td class="right">{{ role.dates }}</td>
+    </tr></table>
+    <table class="row"><tr>
+      <td class="org">{{ role.org }}</td>
+      <td class="right"><span class="where">{{ role.location }}</span></td>
+    </tr></table>
+    <ul>
+      {% for bullet in role.bullets %}<li>{{ bullet.text }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+
+{% if projects %}
+{{ section("Projects") }}
+<div class="section-body">
+  {% for project in projects %}
+  <div class="entry">
+    <div class="project-name">{{ project.name }}</div>
+    <div class="project-stack">{{ project.stack }}</div>
+    <ul>
+      {% for bullet in project.bullets %}<li>{{ bullet.text }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{{ section("Skills") }}
+<div class="section-body skills">
+  {% for group in skills %}
+  {# Bracket access, not `group.items`: Jinja would resolve that to the dict's
+     own .items() method rather than the key of the same name. #}
+  <p><span class="label">{{ group.label }}:</span> {{ group["items"]|join(", ") }}</p>
+  {% endfor %}
+</div>
+
+</body>
+</html>

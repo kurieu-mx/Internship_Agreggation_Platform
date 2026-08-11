@@ -5,6 +5,14 @@ credentials.json
 token.json
 *.pem
 
+# Personal data — your resume, phone number and address stay local
+profile/*
+!profile/README.md
+
+# Generated artefacts and the seen/sent database
+out/
+*.db
+
 # Python
 __pycache__/
 *.py[cod]
