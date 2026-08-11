@@ -135,6 +135,83 @@ def annotate(jobs: Iterable[Job]) -> List[Job]:
     return jobs
 
 
+# Degree vocabulary. The distinction that matters is not "does this mention a
+# graduate degree" but "is a bachelor's student eligible" - "Bachelor's or
+# Master's" and "BS/MS" are open to undergraduates and must be kept.
+_BACHELORS_RE = re.compile(
+    r"\b(bachelor'?s?|b\.?s\.?e?\.?|b\.?a\.?|undergrad(uate)?|bs/ms|bs\s*/\s*ms)\b",
+    re.I,
+)
+_GRADUATE_RE = re.compile(
+    r"\b(ph\.?d\.?|doctoral|doctorate|master'?s?|m\.?s\.?c?\.?|m\.?eng\.?|mba)\b",
+    re.I,
+)
+# "pursuing a PhD", "enrolled in a Master's program", "must be a PhD candidate"
+_GRAD_REQUIREMENT_RE = re.compile(
+    r"(pursuing|enrolled in|working toward|candidate for|currently in|must be)"
+    r"[^.]{0,80}?\b(ph\.?d|doctoral|master'?s|m\.?s\.?c?\b|graduate program)",
+    re.I,
+)
+
+
+def requires_graduate_degree(job: Job) -> bool:
+    """Is this posting closed to an undergraduate?
+
+    Three signals, in descending order of authority:
+
+    1. The feed's own ``degrees`` list, which is structured and unambiguous.
+       Measured live: 34 postings list only PhD, 10 only Master's - and 114
+       list *both* Bachelor's and Master's, which are open to undergraduates
+       and must not be caught.
+    2. The title, when it names a degree level: "Quantitative Research Intern -
+       PhD" is closed, "Quantitative Research Intern (BS/MS)" is not.
+    3. The description, when it states a requirement. "Pursuing a PhD" closes
+       it; "pursuing a Bachelor's or Master's" does not.
+
+    Silence means eligible. Most postings say nothing about degree level, and
+    treating that as a graduate requirement would discard the majority of them.
+    """
+    # 1. The structured field is decisive when present.
+    if job.degrees:
+        listed = " ".join(job.degrees)
+        if _GRADUATE_RE.search(listed) and not _BACHELORS_RE.search(listed):
+            return True
+        return False
+
+    # 2. The title, but only when it names a level at all.
+    if _GRADUATE_RE.search(job.title) and not _BACHELORS_RE.search(job.title):
+        return True
+
+    # 3. The description, checking each matched requirement in isolation so a
+    #    "Bachelor's or Master's" elsewhere in a long posting cannot excuse a
+    #    genuine "must hold a PhD" - and vice versa.
+    for match in _GRAD_REQUIREMENT_RE.finditer(job.description or ""):
+        if not _BACHELORS_RE.search(match.group(0)):
+            return True
+
+    return False
+
+
+def only_undergraduate_eligible(jobs: Iterable[Job]) -> List[Job]:
+    """Drop postings that require a degree the candidate does not have.
+
+    An internship asking for a PhD is not an opportunity for an undergraduate,
+    and it should not occupy one of the tailoring slots - the same reasoning
+    as the work-authorisation filter.
+    """
+    jobs = list(jobs)
+    kept, dropped = [], []
+    for job in jobs:
+        (dropped if requires_graduate_degree(job) else kept).append(job)
+
+    if dropped:
+        log.info("dropped %d posting(s) requiring a graduate degree", len(dropped))
+        for job in dropped:
+            log.debug("  graduate-only: %s - %s (degrees=%s)",
+                      job.company, job.title, job.degrees or "unstated")
+    return kept
+
+
 def only_internships(jobs: Iterable[Job]) -> List[Job]:
     """Drop anything that is not actually an internship.
 

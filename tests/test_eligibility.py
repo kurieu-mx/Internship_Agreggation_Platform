@@ -201,3 +201,120 @@ def test_the_gate_tolerates_an_empty_batch():
     from eligibility import only_internships
 
     assert only_internships([]) == []
+
+
+# -- graduate-degree requirements --------------------------------------------
+#
+# The distinction is not "does this mention a graduate degree" but "is an
+# undergraduate eligible". Measured live: 34 postings list only PhD and 10 only
+# Master's, but 114 list Bachelor's *and* Master's - those are either/or and
+# must be kept, or the filter removes a quarter of the corpus.
+
+
+def degreed(title="Software Engineer Intern", degrees=None, description=""):
+    return Job(company="Acme", title=title, degrees=degrees or [],
+               description=description)
+
+
+@pytest.mark.parametrize("degrees", [["PhD"], ["Master's"], ["Master's", "PhD"], ["MBA"]])
+def test_a_graduate_only_degrees_field_excludes(degrees):
+    from eligibility import requires_graduate_degree
+
+    assert requires_graduate_degree(degreed(degrees=degrees))
+
+
+@pytest.mark.parametrize("degrees", [
+    ["Bachelor's"],
+    ["Bachelor's", "Master's"],
+    ["Bachelor's", "Master's", "PhD"],
+])
+def test_a_degrees_field_accepting_bachelors_is_kept(degrees):
+    from eligibility import requires_graduate_degree
+
+    assert not requires_graduate_degree(degreed(degrees=degrees))
+
+
+def test_an_empty_degrees_field_falls_through_to_the_title():
+    from eligibility import requires_graduate_degree
+
+    assert requires_graduate_degree(degreed(title="Quantitative Research Intern - PhD"))
+    assert not requires_graduate_degree(degreed(title="Software Engineer Intern"))
+
+
+@pytest.mark.parametrize("title", [
+    "Quantitative Research Intern - PhD: Summer 2027",
+    "PhD Quantitative Researcher Intern",
+    "Master's Data Science Internship",
+    "Software Engineering Intern, Masters",
+    "Machine Learning PhD Software Engineer Intern",
+])
+def test_real_graduate_only_titles_are_excluded(title):
+    """All five observed live."""
+    from eligibility import requires_graduate_degree
+
+    assert requires_graduate_degree(degreed(title=title))
+
+
+@pytest.mark.parametrize("title", [
+    "Quantitative Research Intern (BS/MS) - Summer 2027",
+    "Software Engineer Intern, Bachelor's or Master's",
+    "Undergraduate Research Intern",
+])
+def test_a_title_that_also_accepts_undergraduates_is_kept(title):
+    from eligibility import requires_graduate_degree
+
+    assert not requires_graduate_degree(degreed(title=title))
+
+
+def test_a_stated_graduate_requirement_in_the_body_excludes():
+    from eligibility import requires_graduate_degree
+
+    assert requires_graduate_degree(
+        degreed(description="Candidates must be pursuing a PhD in a quantitative field.")
+    )
+
+
+def test_an_either_or_requirement_in_the_body_is_kept():
+    from eligibility import requires_graduate_degree
+
+    assert not requires_graduate_degree(
+        degreed(description="Pursuing a Bachelor's or Master's degree in Computer Science.")
+    )
+
+
+def test_a_genuine_requirement_survives_an_unrelated_bachelors_mention():
+    """A long posting mentioning bachelor's elsewhere must not excuse 'must hold a PhD'."""
+    from eligibility import requires_graduate_degree
+
+    assert requires_graduate_degree(degreed(
+        description="Our team has bachelor's graduates in other roles. "
+                    "For this position you must be pursuing a PhD."
+    ))
+
+
+def test_the_structured_field_outranks_the_title():
+    """A feed that filled the field in knows better than a title heuristic."""
+    from eligibility import requires_graduate_degree
+
+    assert not requires_graduate_degree(
+        degreed(title="PhD Research Intern", degrees=["Bachelor's", "PhD"])
+    )
+
+
+def test_silence_means_eligible():
+    from eligibility import requires_graduate_degree
+
+    assert not requires_graduate_degree(degreed())
+
+
+def test_the_batch_filter_splits_correctly():
+    from eligibility import only_undergraduate_eligible
+
+    jobs = [degreed(title="Open"), degreed(title="Closed", degrees=["PhD"])]
+    assert [j.title for j in only_undergraduate_eligible(jobs)] == ["Open"]
+
+
+def test_the_batch_filter_tolerates_an_empty_list():
+    from eligibility import only_undergraduate_eligible
+
+    assert only_undergraduate_eligible([]) == []

@@ -80,6 +80,15 @@ EXCLUDE_SPONSORSHIP = [
     if s.strip()
 ]
 
+# Drop postings that require a Master's or PhD. An internship asking for a
+# degree the candidate does not have is not an opportunity, and it should not
+# occupy a tailoring slot. Measured live: ~50 of 440 internships are
+# graduate-only, mostly quant research roles.
+#
+# Postings open to "Bachelor's or Master's" are kept - that is either/or, not a
+# requirement - and so is silence, which is most of them.
+UNDERGRADUATE_ONLY = os.getenv("UNDERGRADUATE_ONLY", "true").lower() != "false"
+
 # Categories worth tailoring for. Matched against the normalised category.
 TARGET_CATEGORIES = [
     c.strip()

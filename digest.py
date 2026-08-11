@@ -24,7 +24,8 @@ from typing import List, Optional
 
 import config
 from delivery.email import DigestItem, send
-from eligibility import filter_eligible, only_internships
+from eligibility import (filter_eligible, only_internships,
+                         only_undergraduate_eligible)
 from freshness import filter_fresh
 from sources import build_sources, collect, deduplicate
 from store import open_store
@@ -72,6 +73,10 @@ def run(window_hours: Optional[int] = None, top_n: Optional[int] = None,
 
             jobs = only_internships(jobs)
             counts["internships"] = len(jobs)
+
+            if config.UNDERGRADUATE_ONLY:
+                jobs = only_undergraduate_eligible(jobs)
+                counts["undergrad_eligible"] = len(jobs)
 
             jobs = filter_eligible(jobs)
             counts["eligible"] = len(jobs)
