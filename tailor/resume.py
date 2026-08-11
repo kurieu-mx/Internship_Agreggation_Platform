@@ -22,6 +22,8 @@ from typing import List, Optional
 import config
 import llm
 from models import Job
+from tailor.keywords import (KeywordBrief, align, coverage, prioritise_skills,
+                             rank_skill_groups)
 from tailor.render import RenderError, Selection, select_by_ids
 
 log = logging.getLogger(__name__)
@@ -79,6 +81,15 @@ Hard rules, in order of importance:
 5. Rewording should be surgical. If a bullet already fits, return it
    unchanged. Prefer swapping emphasis over rewriting a sentence.
 
+6. Match the posting's vocabulary. This resume is read by keyword-matching
+   software before a person sees it, and a synonym scores as a miss. Where a
+   bullet describes work the posting names, use the posting's term for it -
+   "distributed systems" rather than "multi-node", "computer vision" rather
+   than "image work". This is re-labelling work that is already there. It is
+   never licence to attach a term to a bullet that does not support it, and a
+   bullet stuffed with terms it cannot back reads worse to a human than the
+   plain version it replaced.
+
 Choose the summary and skill groups that fit the posting, by id."""
 
 
@@ -110,7 +121,7 @@ def _pool_block(profile: dict) -> str:
     return "\n".join(lines)
 
 
-def _posting_block(job: Job) -> str:
+def _posting_block(job: Job, brief: Optional[KeywordBrief] = None) -> str:
     parts = [
         f"COMPANY: {job.company}",
         f"ROLE: {job.title}",
@@ -121,11 +132,32 @@ def _posting_block(job: Job) -> str:
         parts.append(f"\nPOSTING:\n{job.description[:6000]}")
     if job.score_reason:
         parts.append(f"\nWHY THIS WAS SHORTLISTED: {job.score_reason}")
+    if brief and brief.prompt_block():
+        parts.append(f"\n{brief.prompt_block()}")
     return "\n".join(parts)
 
 
+def selection_text(selection: Selection) -> str:
+    """Everything the rendered resume will say, as one string.
+
+    Used to measure keyword coverage without re-extracting text from the PDF -
+    this is the same content the renderer receives, so it answers the question
+    a page of the PDF would answer, and costs nothing.
+    """
+    parts = [selection.summary]
+    for group in selection.skills:
+        parts.append(f"{group.get('label', '')}: "
+                     + ", ".join(str(i) for i in group.get("items", [])))
+    for group in list(selection.experience) + list(selection.projects):
+        parts.append(str(group.get("title") or group.get("name") or ""))
+        parts.append(str(group.get("stack", "")))
+        parts += [b["text"] for b in group["bullets"]]
+    return "\n".join(p for p in parts if p)
+
+
 def choose(job: Job, profile: dict, budget: int = DEFAULT_BUDGET,
-           model: Optional[str] = None) -> Optional[Selection]:
+           model: Optional[str] = None,
+           brief: Optional[KeywordBrief] = None) -> Optional[Selection]:
     """Ask the model which bullets to show. Returns None if it cannot.
 
     A None return is not an error condition the caller should abort on - it
@@ -139,7 +171,7 @@ def choose(job: Job, profile: dict, budget: int = DEFAULT_BUDGET,
         system=SYSTEM,
         prompt=(
             f"Tailor the resume for this posting. Return at most {budget} bullets "
-            f"in total, and at most 3 skill groups.\n\n{_posting_block(job)}"
+            f"in total, and at most 3 skill groups.\n\n{_posting_block(job, brief)}"
         ),
         schema=SELECTION_SCHEMA,
         model=model or config.MODEL_TAILORING,
@@ -159,11 +191,22 @@ def choose(job: Job, profile: dict, budget: int = DEFAULT_BUDGET,
                  job.company, len(bullets), budget)
         bullets = bullets[:budget]
 
+    # Which skill groups to show is a question the keyword brief can answer on
+    # its own, so a model that returns none is backfilled rather than left with
+    # the profile default - the default is ordered for a generic reader, and
+    # this posting is not one.
+    skill_ids = (result.get("skill_ids") or [])[:3]
+    if not skill_ids and brief:
+        skill_ids = rank_skill_groups(profile, brief)
+        if skill_ids:
+            log.debug("no skill groups returned for %s - ranked %s by keyword overlap",
+                      job.company, ", ".join(skill_ids))
+
     selection = select_by_ids(
         profile,
         bullet_ids=[b["id"] for b in bullets],
         summary_id=result.get("summary_id"),
-        skill_ids=(result.get("skill_ids") or [])[:3] or None,
+        skill_ids=skill_ids or None,
     )
 
     # Carry the model's rewording across onto the pool-ordered selection. Any
@@ -180,6 +223,12 @@ def choose(job: Job, profile: dict, budget: int = DEFAULT_BUDGET,
         log.warning("tailoring for %s cited %d bullet id(s) not in the pool: %s",
                     job.company, len(unknown), ", ".join(sorted(unknown)))
 
+    # Lead each skill line with what this posting asked for. Pure reordering of
+    # items the candidate already listed, so there is nothing to validate -
+    # which is what makes it the one keyword optimisation with no downside.
+    if brief:
+        prioritise_skills(selection, brief)
+
     return selection
 
 
@@ -193,15 +242,24 @@ def tailored_resume(job: Job, profile: dict, destination,
     """
     from tailor.render import full_selection, master_selection, render_resume
 
+    # Computed once and reused across budget retries: it depends only on the
+    # posting and the profile, and it is pure local string matching, so a
+    # retry recomputing it would be waste rather than a bug.
+    brief = align(job, profile)
+    if brief:
+        log.info("keywords for %s: %d matched (%s), %d asked for but unsupported",
+                 job.company, len(brief.matched),
+                 ", ".join(brief.terms[:6]), len(brief.missing))
+
     budget = DEFAULT_BUDGET
     last_error = None
 
     while budget >= MIN_BUDGET:
-        selection = choose(job, profile, budget=budget, model=model)
+        selection = choose(job, profile, budget=budget, model=model, brief=brief)
         if selection is None:
             break
         try:
-            return render_resume(profile, selection, destination), True
+            path = render_resume(profile, selection, destination)
         except RenderError as exc:
             last_error = exc
             # A page overflow is worth one retry with less to fit; a
@@ -213,6 +271,18 @@ def tailored_resume(job: Job, profile: dict, destination,
             budget -= 2
             log.info("tailored resume for %s ran long - retrying with %d bullets",
                      job.company, budget)
+            continue
+
+        # Reported, never enforced. A term can legitimately fail to land
+        # because the bullet carrying it lost its place to the page budget,
+        # and rejecting an otherwise good resume over a keyword would be
+        # optimising for the matcher at the candidate's expense.
+        if brief:
+            landed, absent = coverage(selection_text(selection), brief)
+            log.info("%s: resume covers %.0f%% of the posting's keywords%s",
+                     job.company, landed * 100,
+                     f" (absent: {', '.join(absent[:5])})" if absent else "")
+        return path, True
 
     if last_error:
         log.warning("falling back to the untailored resume for %s (%s)",

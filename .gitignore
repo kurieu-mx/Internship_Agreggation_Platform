@@ -32,3 +32,7 @@ env/
 .vscode/
 .idea/
 .DS_Store
+
+# vim swap files - .env.swp carries whatever was in .env
+*.swp
+*.swo

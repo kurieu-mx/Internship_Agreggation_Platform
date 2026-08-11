@@ -46,6 +46,19 @@ Any failure rejects the PDF and falls back to your untailored master. The email 
 
 The second check exists because the first is not enough: provenance alone is satisfied by citing `merlin-collision` and then writing "negotiated multi-million dollar vendor contracts". Text fidelity compares the rendered wording to its source and rejects substitution while still allowing the rewording that is the entire point.
 
+**Keyword optimisation runs inside those guardrails, not around them.** Most applications are read by software before a human sees them, and a resume that describes the same work in different words scores as though it described different work. So the tailoring pass is told which of the posting's terms to use — but the list it is given is *derived from the profile*, so a term can only be suggested if some bullet, tag, or skill entry already evidences it:
+
+```console
+$ make digest
+INFO keywords for Jump Trading: 10 matched (Deep Learning, quantitative research,
+     distributed, machine learning, transformers, PyTorch), 4 asked for but unsupported
+INFO Jump Trading: resume covers 80% of the posting's keywords (absent: statistics)
+```
+
+Terms the posting wants and the profile cannot back — Rust, Kubernetes, JAX — are extracted too, and travel in a separate list the model is told never to claim. They are the honest gaps. Measured against a live posting, turning the brief on moved coverage from 70% to 80%, by changing *which* bullets were selected rather than by padding the wording of the ones already there.
+
+Frequency counting was tried first and is useless: on a real IMC posting the top terms by count were "markets", "environment", "may", "base", "salary". Frequency finds the boilerplate, because boilerplate is what gets repeated.
+
 ### 2. Format preservation means regenerating, not editing
 
 The pipeline never edits a PDF. It regenerates one from structured content through the same renderer every time, which is what makes every variant come out with identical layout. Editing PDF text in place cannot do this — a replacement string of a different width reflows the line, and from there the page.
@@ -96,6 +109,7 @@ flowchart LR
 | `freshness.py` | The 24-hour window, and what to do about sources that publish no date |
 | `store.py` | SQLite: seen postings, sent digests, per-run cost |
 | `tailor/score.py` | Deterministic prefilter, then one model call to rank |
+| `tailor/keywords.py` | Posting vocabulary, intersected with what the profile can evidence |
 | `tailor/render.py` | The renderer and its four guardrails |
 | `tailor/cover.py` | Grounded research and the sectioned letter |
 | `tailor/branding.py` | Logo and brand-colour extraction |
@@ -166,7 +180,7 @@ $ make doctor
 | `make boards` | Check every configured job board still resolves |
 | `make digest-dry` | Build the full digest, send nothing |
 | `make digest` | Build and send |
-| `make test` | 442 tests |
+| `make test` | 494 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.
 
