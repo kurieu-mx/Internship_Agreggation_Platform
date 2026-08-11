@@ -11,9 +11,39 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env(name: str, default: str = "") -> str:
+    """An environment variable, treating blank as unset.
+
+    ``os.getenv(name, default)`` returns the default only when the variable is
+    *absent*. A variable that is present and empty returns an empty string,
+    and the default never applies.
+
+    That distinction is not academic. GitHub Actions expands an unset
+    repository variable to the empty string rather than omitting it, so a
+    workflow passing ``MODEL_TAILORING: ${{ vars.MODEL_TAILORING }}`` with no
+    such variable defined sets it to "". Observed on the first CI run: every
+    model call returned ``400 - model: String should have at least 1
+    character``, tailoring fell back to the untailored master for every
+    posting, no cover letters were produced, and the workflow still reported
+    success - because falling back is the designed response to a failed call.
+
+    The same shape would have crashed outright on the numeric settings, where
+    ``float("")`` raises rather than degrades.
+    """
+    value = os.getenv(name)
+    return value if value is not None and value.strip() else default
+
+
 def _env_int(name: str, default: int) -> int:
     try:
-        return int(os.getenv(name, default))
+        return int(_env(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(_env(name, str(default)))
     except (TypeError, ValueError):
         return default
 
@@ -22,7 +52,7 @@ def _env_int(name: str, default: int) -> int:
 # The Pitt CSC / Simplify community repo publishes every listing as structured
 # JSON. Scraping their rendered README (the original approach here) broke the
 # moment they changed its layout, so we read the machine-readable file instead.
-LISTINGS_URL = os.getenv(
+LISTINGS_URL = _env(
     "LISTINGS_URL",
     "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships"
     "/dev/.github/scripts/listings.json",
@@ -32,7 +62,7 @@ LISTINGS_URL = os.getenv(
 # rather than a `terms` list, and the year comes from the repo itself. Lower
 # yield than the Simplify feed (~400 records vs ~14k), but it is maintained
 # independently, so it occasionally lists postings the larger repo has missed.
-VANSH_URL = os.getenv(
+VANSH_URL = _env(
     "VANSH_URL",
     "https://raw.githubusercontent.com/vanshb03/Summer2027-Internships"
     "/dev/.github/scripts/listings.json",
@@ -44,10 +74,10 @@ VANSH_YEAR = _env_int("VANSH_YEAR", 2027)
 
 # Only keep postings whose term matches one of these (case-insensitive
 # substring match). Empty string disables the filter.
-TERM_FILTER = os.getenv("TERM_FILTER", "Summer 2027")
+TERM_FILTER = _env("TERM_FILTER", "Summer 2027")
 
 # Drop postings the upstream source has marked closed.
-ACTIVE_ONLY = os.getenv("ACTIVE_ONLY", "true").lower() != "false"
+ACTIVE_ONLY = _env("ACTIVE_ONLY", "true").lower() != "false"
 
 # --- Digest ----------------------------------------------------------------
 # How far back a posting may have been published and still count as "new".
@@ -76,7 +106,7 @@ MAX_PER_COMPANY = _env_int("MAX_PER_COMPANY", 1)
 # Postings that stay "Unknown" are kept - see eligibility.py for why.
 EXCLUDE_SPONSORSHIP = [
     s.strip()
-    for s in os.getenv("EXCLUDE_SPONSORSHIP", "No,US citizens only").split(",")
+    for s in _env("EXCLUDE_SPONSORSHIP", "No,US citizens only").split(",")
     if s.strip()
 ]
 
@@ -87,12 +117,12 @@ EXCLUDE_SPONSORSHIP = [
 #
 # Postings open to "Bachelor's or Master's" are kept - that is either/or, not a
 # requirement - and so is silence, which is most of them.
-UNDERGRADUATE_ONLY = os.getenv("UNDERGRADUATE_ONLY", "true").lower() != "false"
+UNDERGRADUATE_ONLY = _env("UNDERGRADUATE_ONLY", "true").lower() != "false"
 
 # Categories worth tailoring for. Matched against the normalised category.
 TARGET_CATEGORIES = [
     c.strip()
-    for c in os.getenv(
+    for c in _env(
         "TARGET_CATEGORIES", "Software Engineering,AI / ML / Data,Quant"
     ).split(",")
     if c.strip()
@@ -110,7 +140,7 @@ TARGET_CATEGORIES = [
 # Add it back here (and set HANDSHAKE_COOKIE) if that changes.
 SOURCES = [
     s.strip()
-    for s in os.getenv(
+    for s in _env(
         "SOURCES",
         "greenhouse,lever,ashby,simplify,vansh,websearch,linkedin",
     ).split(",")
@@ -118,36 +148,36 @@ SOURCES = [
 ]
 
 # Board tokens for the direct-ATS adapters.
-COMPANIES_FILE = os.getenv("COMPANIES_FILE", "companies.yml")
+COMPANIES_FILE = _env("COMPANIES_FILE", "companies.yml")
 
 # Where the seen-postings / sent-digest database lives.
-DB_PATH = os.getenv("DB_PATH", "internships.db")
+DB_PATH = _env("DB_PATH", "internships.db")
 
 # --- Models -----------------------------------------------------------------
 # The SDK reads ANTHROPIC_API_KEY from the environment itself; it is mirrored
 # here only so the doctor and llm.py can check for it without importing the SDK.
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY", "")
 
 # Split by what the call actually does, not to shave the bill.
 #
 # Scoring decides which eight companies you apply to. It is the
 # highest-leverage judgement in the pipeline and the one whose mistakes are
 # invisible - a good posting ranked tenth simply never appears. Opus.
-MODEL_SCORING = os.getenv("MODEL_SCORING", "claude-opus-5")
+MODEL_SCORING = _env("MODEL_SCORING", "claude-opus-5")
 
 # The resume and the cover letter are documents a human reads and judges you
 # on. This is not the place to save two cents. Opus.
-MODEL_TAILORING = os.getenv("MODEL_TAILORING", "claude-opus-5")
+MODEL_TAILORING = _env("MODEL_TAILORING", "claude-opus-5")
 
 # Company research is extraction: pull verifiable facts out of a careers page.
 # No judgement, and the output is validated against the source text before it
 # reaches a letter, so a weaker model cannot smuggle anything through. Haiku,
 # which is ~23% of the daily cost for ~60% of the input tokens.
-MODEL_RESEARCH = os.getenv("MODEL_RESEARCH", "claude-haiku-4-5")
+MODEL_RESEARCH = _env("MODEL_RESEARCH", "claude-haiku-4-5")
 
 # Reasoning depth for the scoring and writing calls. `high` is the default;
 # raise to `xhigh` if tailoring reads shallow, lower to `medium` to cut cost.
-MODEL_EFFORT = os.getenv("MODEL_EFFORT", "high")
+MODEL_EFFORT = _env("MODEL_EFFORT", "high")
 
 # Hard ceiling on API spend per calendar day (UTC), in dollars. A normal digest
 # costs ~$0.54; this exists for the abnormal ones - a retry loop, a TOP_N typo,
@@ -156,50 +186,50 @@ MODEL_EFFORT = os.getenv("MODEL_EFFORT", "high")
 # degrades exactly as it does when the model is unreachable, so the digest
 # still goes out. Spend is tracked in the database, so it survives a restart
 # and a crash-loop cannot reset it. Set to 0 to disable.
-DAILY_BUDGET_USD = float(os.getenv("DAILY_BUDGET_USD", "2.00"))
+DAILY_BUDGET_USD = _env_float("DAILY_BUDGET_USD", 2.00)
 
 # --- Composio (optional: web search + Gmail delivery) -----------------------
 # Everything Composio-backed degrades to a no-op when the key is absent, so
 # the public sources keep working with no configuration at all.
-COMPOSIO_API_KEY = os.getenv("COMPOSIO_API_KEY", "")
-COMPOSIO_USER_ID = os.getenv("COMPOSIO_USER_ID", "default")
+COMPOSIO_API_KEY = _env("COMPOSIO_API_KEY", "")
+COMPOSIO_USER_ID = _env("COMPOSIO_USER_ID", "default")
 
 # Which search tool to run. Composio's search toolkit fronts several providers;
 # Tavily returns the cleanest title/url/content triples for this parser.
-SEARCH_SLUG = os.getenv("SEARCH_SLUG", "COMPOSIO_SEARCH_TAVILY")
+SEARCH_SLUG = _env("SEARCH_SLUG", "COMPOSIO_SEARCH_TAVILY")
 
 # Used by the cover-letter research step to read a company's own pages.
-FETCH_URL_SLUG = os.getenv("FETCH_URL_SLUG", "COMPOSIO_SEARCH_FETCH_URL_CONTENT")
+FETCH_URL_SLUG = _env("FETCH_URL_SLUG", "COMPOSIO_SEARCH_FETCH_URL_CONTENT")
 
 # --- Handshake (optional, needs your own session) ---------------------------
 # Handshake has no public API and sits behind university SSO. This is your own
 # authenticated session, exported from your browser - not a scraper working
 # around a login. Unset means the source contributes nothing.
-HANDSHAKE_COOKIE = os.getenv("HANDSHAKE_COOKIE", "")
-HANDSHAKE_HOST = os.getenv("HANDSHAKE_HOST", "umich.joinhandshake.com")
+HANDSHAKE_COOKIE = _env("HANDSHAKE_COOKIE", "")
+HANDSHAKE_HOST = _env("HANDSHAKE_HOST", "umich.joinhandshake.com")
 
 # --- Delivery ---------------------------------------------------------------
-DIGEST_TO = os.getenv("DIGEST_TO", "kurieu@umich.edu")
-DIGEST_TIMEZONE = os.getenv("DIGEST_TIMEZONE", "America/Chicago")
+DIGEST_TO = _env("DIGEST_TO", "kurieu@umich.edu")
+DIGEST_TIMEZONE = _env("DIGEST_TIMEZONE", "America/Chicago")
 
 # --- HTTP ------------------------------------------------------------------
 REQUEST_TIMEOUT = _env_int("REQUEST_TIMEOUT", 30)
 MAX_RETRIES = _env_int("MAX_RETRIES", 3)
 RETRY_BACKOFF = _env_int("RETRY_BACKOFF", 2)  # seconds, doubled per attempt
-USER_AGENT = os.getenv(
+USER_AGENT = _env(
     "USER_AGENT", "internship-scraper (+https://github.com/kurieu-mx/internship-scraper)"
 )
 
 # --- Ollama (optional enrichment) ------------------------------------------
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2")
+OLLAMA_BASE_URL = _env("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = _env("OLLAMA_MODEL", "llama3.2")
 OLLAMA_TIMEOUT = _env_int("OLLAMA_TIMEOUT", 30)
-OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.1"))
+OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.1)
 
 # --- Google Sheets (optional sink) -----------------------------------------
-GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "credentials.json")
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "")
-SHEET_NAME = os.getenv("SHEET_NAME", "Internships")
+GOOGLE_CREDENTIALS_FILE = _env("GOOGLE_CREDENTIALS_FILE", "credentials.json")
+SPREADSHEET_ID = _env("SPREADSHEET_ID", "")
+SHEET_NAME = _env("SHEET_NAME", "Internships")
 
 COLUMN_HEADERS = [
     "Company",

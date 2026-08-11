@@ -122,9 +122,14 @@ jobs:
           COMPOSIO_API_KEY: ${{ secrets.COMPOSIO_API_KEY }}
           COMPOSIO_USER_ID: ${{ secrets.COMPOSIO_USER_ID }}
           DIGEST_TO: ${{ secrets.DIGEST_TO }}
-          MODEL_SCORING: ${{ vars.MODEL_SCORING }}
-          MODEL_TAILORING: ${{ vars.MODEL_TAILORING }}
-          MODEL_RESEARCH: ${{ vars.MODEL_RESEARCH }}
+          # `||` supplies the fallback here because an undefined repository
+          # variable expands to the empty string rather than being omitted,
+          # and an empty MODEL_* reaches the API as model="" - a 400 on every
+          # call. config.py also treats blank as unset, so this is the second
+          # of two independent guards against the same mistake.
+          MODEL_SCORING: ${{ vars.MODEL_SCORING || 'claude-opus-5' }}
+          MODEL_TAILORING: ${{ vars.MODEL_TAILORING || 'claude-opus-5' }}
+          MODEL_RESEARCH: ${{ vars.MODEL_RESEARCH || 'claude-haiku-4-5' }}
         run: |
           ARGS="--digest"
           [ -n "${{ inputs.window_hours }}" ] && ARGS="$ARGS --window ${{ inputs.window_hours }}"
