@@ -2,7 +2,7 @@
 
 **A scheduled agent that finds the internships posted in the last 24 hours, ranks them against your actual experience, and writes a tailored resume and cover letter for each one — as PDFs that keep your formatting exactly.**
 
-[![tests](https://github.com/kurieu-mx/Internship_scrapper/actions/workflows/tests.yml/badge.svg)](https://github.com/kurieu-mx/Internship_scrapper/actions/workflows/tests.yml)
+[![tests](https://github.com/kurieu-mx/Internship_Agreggation_Platform/actions/workflows/tests.yml/badge.svg)](https://github.com/kurieu-mx/Internship_Agreggation_Platform/actions/workflows/tests.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -126,7 +126,7 @@ flowchart LR
 ## Quickstart
 
 ```bash
-git clone https://github.com/kurieu-mx/Internship_scrapper.git
+git clone https://github.com/kurieu-mx/Internship_Agreggation_Platform.git
 cd Internship_scrapper
 make install
 make preview          # today's postings — no credentials needed
