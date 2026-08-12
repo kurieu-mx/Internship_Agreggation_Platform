@@ -66,10 +66,20 @@ Weigh, roughly in order:
   - overlap between what the role needs and what the candidate has actually built
   - whether the role is the kind of work they have done before
   - seniority fit: this is a student seeking a summer internship
+  - employer scale and recognition (see below)
   - how concrete the posting is about the work
 
-Ignore brand prestige. A well-matched role at an unknown company beats a
-poorly-matched one at a famous one.
+On employer scale: large, established employers count for something real here,
+and it is not prestige for its own sake. This candidate needs visa sponsorship,
+and big companies file H-1B petitions as routine where small firms often cannot;
+they also run structured internship programmes with actual return offers. So a
+major employer is worth a genuine lift - roughly the difference between an 80
+and an 85 on comparable roles.
+
+It is a tiebreaker, not an override. A well-matched engineering role at a firm
+nobody has heard of still beats a poorly-matched one at a famous company, and a
+recognisable name attached to work outside the candidate's field - retail
+management, generic business operations, sales - deserves no lift at all.
 
 `why` is one concrete sentence naming the specific overlap - not "strong fit".
 `gaps` names what the candidate would be stretching on, or is empty."""
@@ -131,6 +141,34 @@ def recency_bonus(job: Job, now: Optional[datetime] = None) -> float:
     return max(0.0, 12.0 - hours / 2)
 
 
+def employer_bonus(job: Job) -> float:
+    """Extra points for a large, well-known employer.
+
+    Matched on a word boundary rather than a substring: "hp" must not fire on
+    "SharpSpring", and "target" must not fire on "Targeted Therapeutics". The
+    company name is checked, never the title - a posting mentioning Google in
+    its tech stack is not a Google posting.
+
+    Sized to be smaller than a strong keyword match on purpose. This exists so
+    a recognised name reaches the rerank pool, not so it wins it: the model
+    still ranks on fit, and a famous logo on an unrelated role should still
+    lose to a good match at a company nobody has heard of.
+    """
+    name = (job.company or "").lower()
+    if not name.strip():
+        return 0.0
+
+    def names(candidates) -> bool:
+        return any(re.search(rf"(?<![a-z0-9]){re.escape(c)}(?![a-z0-9])", name)
+                   for c in candidates)
+
+    if names(config.PRIORITY_EMPLOYERS_TIER1):
+        return config.PRIORITY_BONUS_TIER1
+    if names(config.PRIORITY_EMPLOYERS_TIER2):
+        return config.PRIORITY_BONUS_TIER2
+    return 0.0
+
+
 def prefilter(jobs: Iterable[Job], profile: dict,
               limit: int = RERANK_LIMIT,
               categories: Optional[List[str]] = None,
@@ -146,12 +184,18 @@ def prefilter(jobs: Iterable[Job], profile: dict,
     dropped = len(list(jobs)) - len(wanted) if hasattr(jobs, "__len__") else None
 
     for job in wanted:
-        job.score = keyword_score(job, weights) + recency_bonus(job, now)
+        job.score = (keyword_score(job, weights)
+                     + recency_bonus(job, now)
+                     + employer_bonus(job))
 
     wanted.sort(key=lambda j: -j.score)
-    log.info("prefilter: %d postings in target categories%s, taking top %d",
-             len(wanted), f" (dropped {dropped})" if dropped else "", min(limit, len(wanted)))
-    return wanted[:limit]
+    kept = wanted[:limit]
+    promoted = sum(1 for job in kept if employer_bonus(job))
+    log.info("prefilter: %d postings in target categories%s, taking top %d "
+             "(%d at priority employers)",
+             len(wanted), f" (dropped {dropped})" if dropped else "",
+             min(limit, len(wanted)), promoted)
+    return kept
 
 
 def _posting_block(index: int, job: Job) -> str:

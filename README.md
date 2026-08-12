@@ -6,7 +6,7 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Applying to internships is a search problem wearing a writing problem as a hat. The postings worth applying to are scattered across seven places, most of them are stale by the time you see them, and the ones that matter reward applying within a day. Then each one needs a resume that emphasises the right half of your experience and a cover letter that proves you read the posting.
+Applying to internships is a search problem wearing a writing problem as a hat. The postings worth applying to are scattered across eight places, most of them are stale by the time you see them, and the ones that matter reward applying within a day. Then each one needs a resume that emphasises the right half of your experience and a cover letter that proves you read the posting.
 
 This does all of it at 3pm, every day, for about **70 cents**.
 
@@ -90,7 +90,7 @@ The letterhead uses the company's real logo and a colour extracted from its own 
 
 ```mermaid
 flowchart LR
-    A[7 sources] --> B[de-duplicate<br/>by authority]
+    A[8 sources] --> B[de-duplicate<br/>by authority]
     B --> C[internship gate]
     C --> D[work authorisation]
     D --> E[24h window]
@@ -104,7 +104,7 @@ flowchart LR
 
 | Module | Responsibility |
 |---|---|
-| `sources/` | Seven adapters behind one protocol — Greenhouse, Lever, Ashby, two community feeds, web search, LinkedIn |
+| `sources/` | Eight adapters behind one protocol — Greenhouse, Lever, Ashby, **Workday**, two community feeds, web search, LinkedIn |
 | `eligibility.py` | Internship gate, and work-authorisation filtering |
 | `freshness.py` | The 24-hour window, and what to do about sources that publish no date |
 | `store.py` | SQLite: seen postings, sent digests, per-run cost |
@@ -120,6 +120,12 @@ flowchart LR
 ## Design decisions
 
 **Every source fails independently.** A source that times out, changes schema, or loses its credentials costs you that source's postings for one run — not the run. The community feeds are public and always work; the search and logged-in legs are neither, and they *will* break. Isolating them keeps the reliable legs running when the unreliable ones fall over.
+
+**The ATS you cover decides which companies you can see.** Greenhouse, Lever and Ashby are what startups, quant firms and mid-size tech use. Large enterprises use Workday, and FAANG-scale companies run bespoke portals. Covering only the first three made the digest structurally blind to most of the Fortune 500 — not as a ranking artefact but as a collection one, which is worse, because a posting that was never collected cannot be re-ranked. An IBM Summer 2027 req went out unseen before the Workday adapter existed.
+
+Workday's `/wday/cxs` endpoint is public JSON, and two of its quirks shape the adapter. Passing `searchText` switches the API from date order to relevance order, so it issues an *empty* search and walks strictly newest-first, stopping as soon as postings age past the window — one or two requests for a company with 2,000 open roles. And the list endpoint has no real dates, only rendered strings like "Posted 5 Days Ago", so every surviving posting gets one detail fetch for a date the freshness gate can trust.
+
+**Big employers get a bounded lift, not a veto.** A recognised name adds points in the deterministic prefilter, enough to carry it into the rerank pool rather than lose to a keyword count. The model still ranks on fit. The reason is not prestige: an applicant who needs visa sponsorship is materially better served by employers who file H-1B petitions as routine, and a famous logo on a retail-management internship is still a retail-management internship.
 
 **ATS boards outrank aggregators.** A posting reaches Greenhouse the moment a recruiter publishes it, and reaches an aggregator when a contributor opens a PR. For a digest whose premise is "posted in the last 24 hours", that gap is the product. When the same posting arrives from both, the board's copy wins the merge and the aggregator backfills any field it left empty.
 
@@ -180,7 +186,7 @@ $ make doctor
 | `make boards` | Check every configured job board still resolves |
 | `make digest-dry` | Build the full digest, send nothing |
 | `make digest` | Build and send |
-| `make test` | 494 tests |
+| `make test` | 560 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.
 

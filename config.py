@@ -142,7 +142,7 @@ SOURCES = [
     s.strip()
     for s in _env(
         "SOURCES",
-        "greenhouse,lever,ashby,simplify,vansh,websearch,linkedin",
+        "greenhouse,lever,ashby,workday,simplify,vansh,websearch,linkedin",
     ).split(",")
     if s.strip()
 ]
@@ -187,6 +187,50 @@ MODEL_EFFORT = _env("MODEL_EFFORT", "high")
 # still goes out. Spend is tracked in the database, so it survives a restart
 # and a crash-loop cannot reset it. Set to 0 to disable.
 DAILY_BUDGET_USD = _env_float("DAILY_BUDGET_USD", 2.00)
+
+# --- Employer prominence ----------------------------------------------------
+# Postings at these employers get a bonus in the deterministic prefilter, so a
+# recognised name is carried into the rerank pool rather than being cut by a
+# keyword count. The model still decides the final shortlist - this widens who
+# gets considered, it does not decide who wins.
+#
+# The bonus is deliberately smaller than a strong keyword match. A big name on
+# a badly-fitting role is still a badly-fitting role, and a digest that leads
+# with a retail management internship because the logo is famous would be
+# worse than one that never mentioned it.
+#
+# There is a substantive reason beyond brand: an applicant who needs visa
+# sponsorship is materially better served by large established employers, who
+# file H-1B petitions routinely, than by small firms that often cannot.
+PRIORITY_EMPLOYERS_TIER1 = [
+    s.strip().lower()
+    for s in _env(
+        "PRIORITY_EMPLOYERS_TIER1",
+        "google,alphabet,meta,facebook,amazon,apple,microsoft,netflix,nvidia,"
+        "openai,anthropic,deepmind,tesla,spacex,stripe,databricks",
+    ).split(",")
+    if s.strip()
+]
+
+PRIORITY_EMPLOYERS_TIER2 = [
+    s.strip().lower()
+    for s in _env(
+        "PRIORITY_EMPLOYERS_TIER2",
+        "ibm,intel,salesforce,adobe,oracle,cisco,qualcomm,dell,hp,hewlett,"
+        "broadcom,amd,micron,texas instruments,applied materials,analog devices,"
+        "boeing,lockheed,northrop grumman,raytheon,rtx,honeywell,ge aerospace,"
+        "jpmorgan,goldman sachs,morgan stanley,capital one,mastercard,visa,"
+        "paypal,bloomberg,palantir,snowflake,workday,servicenow,vmware,"
+        "uber,lyft,airbnb,doordash,linkedin,bytedance,tiktok,samsung,sony,"
+        "siemens,bosch,intuit,cisco systems,comcast,motorola,autodesk,target",
+    ).split(",")
+    if s.strip()
+]
+
+# Points added in the prefilter. Sized against recency_bonus, which peaks at
+# 12 for a posting that just went live.
+PRIORITY_BONUS_TIER1 = _env_float("PRIORITY_BONUS_TIER1", 18.0)
+PRIORITY_BONUS_TIER2 = _env_float("PRIORITY_BONUS_TIER2", 10.0)
 
 # --- Composio (optional: web search + Gmail delivery) -----------------------
 # Everything Composio-backed degrades to a no-op when the key is absent, so

@@ -106,3 +106,33 @@ ashby:
   - {token: replit, name: Replit}
   - {token: deel, name: Deel}
   - {token: mercury, name: Mercury}
+
+# Workday - what large enterprises run their careers site on. The three ATS
+# platforms above skew startup and mid-size; without this block the digest was
+# structurally blind to most of the Fortune 500 (an IBM req went out unseen).
+#
+# Needs three parts, none derivable from the others: nvidia is on wd5 at
+# NVIDIAExternalCareerSite, intel is on wd1 at External. Every entry below was
+# verified against the live API and returned a non-zero job count.
+workday:
+  - {tenant: adobe, host: wd5, site: external_experienced, name: Adobe}
+  - {tenant: amat, host: wd1, site: External, name: Applied Materials}
+  - {tenant: autodesk, host: wd1, site: Ext, name: Autodesk}
+  - {tenant: boeing, host: wd1, site: EXTERNAL_CAREERS, name: Boeing}
+  - {tenant: broadcom, host: wd1, site: External_Career, name: Broadcom}
+  - {tenant: capitalone, host: wd12, site: Capital_One, name: Capital One}
+  - {tenant: comcast, host: wd5, site: Comcast_Careers, name: Comcast}
+  - {tenant: hp, host: wd5, site: ExternalCareerSite, name: HP}
+  - {tenant: hpe, host: wd5, site: Jobsathpe, name: HPE}
+  - {tenant: intel, host: wd1, site: External, name: Intel}
+  - {tenant: mastercard, host: wd1, site: CorporateCareers, name: Mastercard}
+  - {tenant: micron, host: wd1, site: External, name: Micron}
+  - {tenant: motorolasolutions, host: wd5, site: Careers, name: Motorola Solutions}
+  - {tenant: ngc, host: wd1, site: Northrop_Grumman_External_Site, name: Northrop Grumman}
+  - {tenant: nvidia, host: wd5, site: NVIDIAExternalCareerSite, name: NVIDIA}
+  - {tenant: paypal, host: wd1, site: jobs, name: PayPal}
+  - {tenant: salesforce, host: wd12, site: External_Career_Site, name: Salesforce}
+  - {tenant: sonyglobal, host: wd1, site: SonyGlobalCareers, name: Sony}
+  - {tenant: target, host: wd5, site: targetcareers, name: Target}
+  - {tenant: workday, host: wd5, site: Workday, name: Workday}
+  - {tenant: analogdevices, host: wd1, site: External, name: Analog Devices}

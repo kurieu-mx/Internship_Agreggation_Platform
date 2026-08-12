@@ -138,3 +138,53 @@ def test_genuinely_different_roles_still_differ():
     # A meaningful qualifier in the middle is not noise.
     assert Job(company="Acme", title="Backend Engineer Intern").key != \
            Job(company="Acme", title="Frontend Engineer Intern").key
+
+
+# -- de-duplication across sources that name things differently --------------
+#
+# The Workday adapter made this class of duplicate common: Workday reports the
+# registered entity and its own title wording, while the community feeds use
+# the short name and a shorter title. Observed live - Motorola's supply-chain
+# internship arrived twice and occupied two shortlist slots.
+
+
+def _key(company, title):
+    return Job(company=company, title=title, locations=[],
+               field_category="Software Engineering").key
+
+
+def test_a_corporate_suffix_does_not_split_one_employer():
+    assert _key("Motorola Solutions", "Data Analyst Intern") == \
+           _key("Motorola", "Data Analyst Intern")
+
+
+def test_internship_and_intern_are_the_same_word():
+    assert _key("Acme", "Data Analyst Internship") == _key("Acme", "Data Analyst Intern")
+
+
+def test_a_bare_trailing_year_is_ignored():
+    assert _key("Acme", "Data Analyst Intern 2027") == _key("Acme", "Data Analyst Intern")
+
+
+def test_the_live_motorola_duplicate_now_merges():
+    assert _key("Motorola Solutions", "Supply Chain Data Analyst Internship 2027") == \
+           _key("Motorola", "Supply Chain Data Analyst Intern")
+
+
+def test_different_seasons_stay_different():
+    """Stripping the term would merge two genuinely separate postings."""
+    assert _key("Acme", "SWE Intern Summer 2027") != _key("Acme", "SWE Intern Fall 2027")
+
+
+@pytest.mark.parametrize("full,short", [
+    ("Applied Materials", "Applied"),
+    ("Northrop Grumman", "Northrop"),
+    ("General Motors", "General"),
+])
+def test_a_real_second_word_is_not_stripped(full, short):
+    assert _key(full, "Intern") != _key(short, "Intern")
+
+
+def test_a_company_named_only_by_a_suffix_keeps_its_name():
+    """Stripping to empty would make one key match every unnamed posting."""
+    assert _key("Systems", "Intern") != _key("", "Intern")
