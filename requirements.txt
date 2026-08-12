@@ -10,6 +10,12 @@ weasyprint>=61,<70      # HTML -> PDF renderer backend
 Jinja2>=3.1,<4          # resume and cover-letter templates
 pypdf>=4.0,<7           # page-count and text guardrails on generated PDFs
 
+# Dashboard: paste a posting URL, get a resume and letter (`make dashboard`).
+# Not needed by the digest or its CI workflow.
+fastapi>=0.110,<1
+uvicorn>=0.27,<1
+python-multipart>=0.0.9,<1   # FastAPI reads the URL out of a posted form
+
 # Google Sheets output (only needed for --sheets)
 google-api-python-client>=2.108,<3
 google-auth>=2.23,<3

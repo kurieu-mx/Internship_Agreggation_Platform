@@ -11,7 +11,7 @@ PIP := .venv/bin/pip
 RUN := env -u PYTHONPATH $(PY)
 
 .PHONY: help venv install test doctor boards handshake verify-render costs \
-        digest digest-dry preview clean
+        digest digest-dry preview clean dashboard
 
 help:
 	@echo "  make install        create the venv and install dependencies"
@@ -24,6 +24,7 @@ help:
 	@echo "  make handshake      test your Handshake session cookie (off by default)"
 	@echo "  make digest-dry     build the digest and print it, sending nothing"
 	@echo "  make digest         build and send the digest"
+	@echo "  make dashboard      paste a posting URL, get a resume and letter"
 
 venv:
 	@test -d .venv || python3 -m venv .venv
@@ -65,3 +66,10 @@ verify-render:
 
 costs:
 	@$(RUN) -c "import costs, sys; sys.exit(costs.run())" || true
+
+# The dashboard defaults itself to LLM_BACKEND=cli, so its model calls go
+# through the Claude Code CLI and bill to the Max subscription rather than to
+# API credits. Six calls per posting on the API measures at ~$0.25-0.30, which
+# is the wrong price for a page you paste links into all afternoon.
+dashboard:
+	$(RUN) -m uvicorn dashboard.app:app --host 127.0.0.1 --port 8000

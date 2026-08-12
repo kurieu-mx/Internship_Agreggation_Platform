@@ -158,6 +158,19 @@ DB_PATH = _env("DB_PATH", "internships.db")
 # here only so the doctor and llm.py can check for it without importing the SDK.
 ANTHROPIC_API_KEY = _env("ANTHROPIC_API_KEY", "")
 
+# Which backend the model calls go through: `api` or `cli`.
+#
+# `api` bills per token and is what the digest uses - a digest day measures at
+# ~80 calls and ~$3.00, paid once. `cli` shells out to Claude Code in headless
+# mode, which runs against the Max subscription and costs nothing marginal.
+#
+# The default is `api` deliberately. The CLI backend needs an interactive
+# claude.ai login, which the GitHub Actions runner does not have, so flipping
+# this default would break the 3pm workflow rather than make it free. The
+# dashboard - where the same six calls per posting would otherwise cost
+# ~$0.25-0.30 every time a link is pasted - sets `cli` for its own process.
+LLM_BACKEND = _env("LLM_BACKEND", "api").strip().lower()
+
 # Split by what the call actually does, not to shave the bill.
 #
 # Scoring decides which eight companies you apply to. It is the

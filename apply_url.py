@@ -35,10 +35,11 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 from urllib.parse import urlparse
 
 import config
+import llm
 from models import Job
 
 log = logging.getLogger(__name__)
@@ -208,65 +209,83 @@ def extract(url: str, text: str) -> Optional[Job]:
     )
 
 
-def _report_gates(job: Job) -> None:
-    """Run the same filters the digest runs, and say what they found.
+def check_gates(job: Job) -> List[Tuple[str, str]]:
+    """Run the same filters the digest runs and return what they found.
 
     Reported rather than enforced. You asked for this specific posting, so the
     decision to apply anyway is yours - but you should know before the letter
     is written, not after the interview.
+
+    Returns ``(level, message)`` pairs, where level is ``warn`` or ``note``, so
+    a terminal and a browser can render the same findings differently without
+    either one re-deriving them. Sets ``job.sponsorship`` as a side effect,
+    which the email body and the dashboard both read.
     """
     from eligibility import detect_restriction, requires_graduate_degree
     from sources.ats import looks_like_internship
 
+    findings: List[Tuple[str, str]] = []
+
     if not looks_like_internship(job.title):
-        print("  ! this title does not read as an internship")
+        findings.append(("warn", "this title does not read as an internship"))
 
     if requires_graduate_degree(job):
-        print("  ! this posting appears to require a graduate degree")
+        findings.append(("warn", "this posting appears to require a graduate degree"))
 
     status, reason = detect_restriction(job)
     job.sponsorship = status
     if status in config.EXCLUDE_SPONSORSHIP:
-        print(f"  ! closed to applicants needing sponsorship — {reason}")
+        findings.append(("warn", f"closed to applicants needing sponsorship — {reason}"))
     elif status == "Yes":
-        print(f"  · sponsorship offered — {reason}")
+        findings.append(("note", f"sponsorship offered — {reason}"))
+
+    return findings
 
 
-def run(url: str, dry_run: bool = False, to: Optional[str] = None,
-        skip_cover: bool = False) -> int:
-    """Fetch, tailor, and send one posting. Returns a process exit code."""
+class Prepared:
+    """Everything one posting produced, before anything is done with it.
+
+    ``run`` emails it and the dashboard renders it. Splitting the pipeline
+    here rather than duplicating it keeps the guarantee the module docstring
+    makes - that a hand-added posting goes through exactly the same path as a
+    collected one - true for the dashboard too, not just the CLI.
+    """
+
+    def __init__(self, job: Job):
+        self.job = job
+        self.resume: Optional[Path] = None
+        self.cover: Optional[Path] = None
+        self.tailored = False
+        self.gates: List[Tuple[str, str]] = []
+        self.brief = None
+        self.cost = 0.0
+
+
+def prepare(url: str, out_dir: Path, skip_cover: bool = False) -> Optional[Prepared]:
+    """Fetch, read, score and tailor one posting. Returns None if unreadable.
+
+    No delivery and no store writes - those belong to the caller, because
+    "produced a letter" and "sent it" are different outcomes and only the
+    caller knows which one it wants.
+    """
     import budget
-    import store
-    from delivery.email import DigestItem, send
     from digest import _slug, load_profile
     from tailor.cover import cover_letter
     from tailor.keywords import align
     from tailor.resume import tailored_resume
     from tailor.score import rerank
 
-    if not urlparse(url).scheme.startswith("http"):
-        log.error("that does not look like a URL: %s", url)
-        return 2
-
     text = fetch_posting(url)
     if not text:
         log.error("could not read that page by any route")
-        return 1
+        return None
 
     job = extract(url, text)
     if job is None:
-        return 1
+        return None
 
-    now = datetime.now(timezone.utc)
-    out_dir = ROOT / "out" / now.strftime("%Y-%m-%d")
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"\n  {job.company} — {job.title}")
-    print(f"  {', '.join(job.locations) or 'location not stated'} · "
-          f"{job.field_category} · {', '.join(job.terms) or 'term not stated'}")
-    if job.posted_at:
-        print(f"  posted {job.posted_at:%Y-%m-%d}")
-    _report_gates(job)
+    prepared = Prepared(job)
+    prepared.gates = check_gates(job)
 
     profile = load_profile()
     profile_text = (ROOT / "profile" / "profile.yml").read_text()
@@ -277,22 +296,58 @@ def run(url: str, dry_run: bool = False, to: Optional[str] = None,
     # posting showing 0/100 reads as a bad match rather than an unscored one.
     rerank([job], profile, profile_text)
 
-    brief = align(job, profile)
-    if brief:
-        print(f"  keywords: {len(brief.matched)} matched"
-              + (f", missing {', '.join(brief.missing[:6])}" if brief.missing else ""))
+    prepared.brief = align(job, profile)
 
+    out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"{_slug(job.company)}_{_slug(job.title)}"
-    item = DigestItem(job)
 
     try:
         resume, tailored = tailored_resume(job, profile, out_dir / f"Resume_{stem}.pdf")
-        item.resume, item.tailored = resume, tailored
+        prepared.resume, prepared.tailored = resume, tailored
     except Exception as exc:
         log.warning("no resume (%s): %s", type(exc).__name__, exc)
 
     if not skip_cover:
-        item.cover = cover_letter(job, profile, out_dir / f"Cover_{stem}.pdf")
+        prepared.cover = cover_letter(job, profile, out_dir / f"Cover_{stem}.pdf")
+
+    prepared.cost = budget.spent_today() - spend_before
+    return prepared
+
+
+def run(url: str, dry_run: bool = False, to: Optional[str] = None,
+        skip_cover: bool = False) -> int:
+    """Fetch, tailor, and send one posting. Returns a process exit code."""
+    import store
+    from delivery.email import DigestItem, send
+
+    if not urlparse(url).scheme.startswith("http"):
+        log.error("that does not look like a URL: %s", url)
+        return 2
+
+    now = datetime.now(timezone.utc)
+    out_dir = ROOT / "out" / now.strftime("%Y-%m-%d")
+
+    prepared = prepare(url, out_dir, skip_cover=skip_cover)
+    if prepared is None:
+        return 1
+
+    job = prepared.job
+
+    print(f"\n  {job.company} — {job.title}")
+    print(f"  {', '.join(job.locations) or 'location not stated'} · "
+          f"{job.field_category} · {', '.join(job.terms) or 'term not stated'}")
+    if job.posted_at:
+        print(f"  posted {job.posted_at:%Y-%m-%d}")
+    for level, message in prepared.gates:
+        print(f"  {'!' if level == 'warn' else '·'} {message}")
+
+    brief = prepared.brief
+    if brief:
+        print(f"  keywords: {len(brief.matched)} matched"
+              + (f", missing {', '.join(brief.missing[:6])}" if brief.missing else ""))
+
+    item = DigestItem(job, resume=prepared.resume, cover=prepared.cover,
+                      tailored=prepared.tailored)
 
     delivered = send([item], [], to=to or config.DIGEST_TO, now=now, dry_run=dry_run)
 
@@ -306,6 +361,7 @@ def run(url: str, dry_run: bool = False, to: Optional[str] = None,
           f"{'' if item.tailored else ' (untailored fallback)'}")
     print(f"  cover  : {item.cover or 'none'}")
     print(f"  {'sent to ' + (to or config.DIGEST_TO) if delivered else 'not sent'}")
-    print(f"  cost   : ${budget.spent_today() - spend_before:.4f}")
+    print(f"  cost   : ${prepared.cost:.4f}"
+          + ("  (subscription — no API spend)" if llm.using_cli() else ""))
 
     return 0 if (delivered or dry_run) else 1

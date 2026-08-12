@@ -241,6 +241,47 @@ Prompt caching carries about three-quarters of input volume at a tenth of the pr
 
 Quiet days cost nothing — no fresh postings means no calls at all.
 
+Those are the `count_tokens` projections. What the spend table actually
+records is higher — 80 calls and $2.99 on 2026-08-12, 82 and $3.14 the day
+before — because a digest reranks a wider pool than ten postings and the voice
+revision adds a pass. Run `make costs` for the current figures rather than
+trusting this table.
+
+---
+
+## The dashboard
+
+Pasting a link into `--apply-url` runs six model calls — extraction, scoring,
+resume tailoring, then research, drafting and voice revision for the letter —
+which measures at roughly $0.25–0.30 on the API. That is a fine price once a
+day and a bad one for an afternoon of pasting links.
+
+So `make dashboard` serves the same pipeline at 127.0.0.1:8000 with
+`LLM_BACKEND=cli`, which routes those calls through Claude Code in headless
+mode. Those run against a Max subscription rather than API credits, so a
+posting costs nothing marginal; a full run reports `$0.0000` and leaves the
+spend ledger untouched.
+
+It is the same pipeline, not a parallel one — `apply_url.prepare` is what both
+the CLI and the browser call, so a posting submitted either way gets the same
+eligibility gates, the same scoring and the same templates.
+
+Two things the backend does not change, and one it cannot:
+
+- **An API key silently wins.** A set `ANTHROPIC_API_KEY` takes precedence
+  over the claude.ai login, so the CLI would bill credits and nothing in the
+  output would say so. `llm_cli` strips it from the subprocess environment;
+  leaving the key in `.env` for the digest is fine.
+- **The schema is not enforced.** The API constrains output to the JSON
+  schema; the CLI can only be asked. Responses are validated and one retry is
+  spent naming the faults, after which the caller's existing fallback — the
+  deterministic ranking, the untailored master — applies exactly as it does
+  when the model is unreachable.
+- **CI cannot use it.** The GitHub Actions runner has no interactive
+  claude.ai login, so `LLM_BACKEND` defaults to `api` and the 3pm workflow is
+  unaffected. This is a local-tool optimisation, not a way to run the digest
+  for free.
+
 ---
 
 ## Limitations

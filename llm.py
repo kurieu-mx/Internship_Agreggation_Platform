@@ -28,6 +28,17 @@ log = logging.getLogger(__name__)
 _client = None
 
 
+def using_cli() -> bool:
+    """True when calls should go through the Claude Code CLI instead of the API.
+
+    Selected by ``LLM_BACKEND``. The default stays ``api`` so the digest and
+    its CI workflow are unaffected - GitHub Actions has no interactive login,
+    so the CLI backend is not available there. The dashboard sets it to
+    ``cli`` for itself.
+    """
+    return config.LLM_BACKEND == "cli"
+
+
 def get_client():
     """Cached Anthropic client, or None if the key is missing or bad."""
     global _client
@@ -47,6 +58,10 @@ def get_client():
 
 
 def available() -> bool:
+    if using_cli():
+        import llm_cli
+
+        return llm_cli.available()
     return get_client() is not None
 
 
@@ -89,6 +104,17 @@ def complete_json(system: str, prompt: str, schema: Dict[str, Any],
     is passed separately rather than concatenated into ``system`` by the
     caller, where a stray timestamp could silently defeat the cache.
     """
+    # Checked first so the budget gate below is not consulted for calls that
+    # cannot spend anything. Letting dashboard traffic accumulate against the
+    # daily cap would starve the digest of the calls the cap exists to protect.
+    if using_cli():
+        import llm_cli
+
+        return llm_cli.complete_json(
+            system=system, prompt=prompt, schema=schema, model=model,
+            cached_prefix=cached_prefix, max_tokens=max_tokens, effort=effort,
+        )
+
     client = get_client()
     if client is None:
         return None

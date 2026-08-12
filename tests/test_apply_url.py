@@ -162,41 +162,41 @@ def test_a_non_internship_still_parses_but_is_flagged(monkeypatch, capsys):
         title="Senior Staff Engineer", is_internship=False))
     job = apply_url.extract("https://example.com/job", PAGE)
     assert job is not None
-    apply_url._report_gates(job)
-    assert "does not read as an internship" in capsys.readouterr().out
+    findings = apply_url.check_gates(job)
+    assert any("does not read as an internship" in m for _, m in findings)
 
 
 # -- the gates ---------------------------------------------------------------
 
 
-def test_a_sponsorship_bar_is_reported(capsys):
+def test_a_sponsorship_bar_is_reported():
     from models import Job
 
     job = Job(company="Anduril", title="Software Intern", locations=["CA"],
               field_category="Software Engineering",
               description="Applicants must be US citizens. Requires a security clearance.")
-    apply_url._report_gates(job)
-    assert "closed to applicants needing sponsorship" in capsys.readouterr().out
+    findings = apply_url.check_gates(job)
+    assert any(level == "warn" and "closed to applicants needing sponsorship" in m
+               for level, m in findings)
 
 
-def test_a_graduate_requirement_is_reported(capsys):
+def test_a_graduate_requirement_is_reported():
     from models import Job
 
     job = Job(company="Acme", title="Research Intern", locations=["CA"],
               field_category="AI / ML / Data",
               description="Candidates must be pursuing a PhD in computer science.")
-    apply_url._report_gates(job)
-    assert "graduate degree" in capsys.readouterr().out
+    findings = apply_url.check_gates(job)
+    assert any(level == "warn" and "graduate degree" in m for level, m in findings)
 
 
-def test_a_clean_posting_reports_nothing(capsys):
+def test_a_clean_posting_reports_nothing():
     from models import Job
 
     job = Job(company="Acme", title="Software Engineer Intern", locations=["TX"],
               field_category="Software Engineering",
               description="Build things in Python.")
-    apply_url._report_gates(job)
-    assert capsys.readouterr().out.strip() == ""
+    assert apply_url.check_gates(job) == []
 
 
 # -- the command -------------------------------------------------------------
