@@ -98,6 +98,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--to", metavar="EMAIL", help="with --digest: override the recipient")
     parser.add_argument("--skip-cover", action="store_true",
                         help="with --digest: skip cover letters (faster, cheaper)")
+    parser.add_argument(
+        "--apply-url", metavar="URL",
+        help="tailor and email one posting by link, for employers no source "
+             "reaches (IBM, Amazon, Google, Apple, Meta, Microsoft)")
     parser.add_argument("--cover-preview", metavar="COMPANY",
                         help="build one cover letter from a stored posting, for "
                              "iterating on the design without a full run")
@@ -271,6 +275,12 @@ def main(argv=None) -> int:
         import doctor
 
         return doctor.run()
+
+    if args.apply_url:
+        import apply_url
+
+        return apply_url.run(args.apply_url, dry_run=args.dry_run,
+                             to=args.to, skip_cover=args.skip_cover)
 
     if args.cover_preview:
         import cover_preview

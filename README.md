@@ -186,7 +186,8 @@ $ make doctor
 | `make boards` | Check every configured job board still resolves |
 | `make digest-dry` | Build the full digest, send nothing |
 | `make digest` | Build and send |
-| `make test` | 560 tests |
+| `python main.py --apply-url <url>` | Tailor and email one posting by link |
+| `make test` | 588 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.
 
@@ -227,6 +228,22 @@ Quiet days cost nothing — no fresh postings means no calls at all.
 - **Handshake needs a browser cookie that expires.** Off by default. It is the only source that sees school-restricted postings, and the least durable thing here.
 - **One posting per company per day** is a deliberate trade, not a limitation, but it does mean a company posting several genuinely different roles is under-represented. The overflow appears in the digest as links.
 - **Company research depends on a fetchable marketing site.** Small firms with thin web presence yield nothing, and their letters are written about the role instead.
+- **Six large employers are unreachable by any source.** IBM, Amazon, Google, Apple, Meta and Microsoft each run their own careers portal instead of an ATS with a public API, and some are bot-protected — a plain request to IBM returns HTTP 202 with an empty body. Six bespoke adapters was judged not worth the maintenance, so those arrive by hand:
+
+```console
+$ python main.py --apply-url "https://careers.ibm.com/en_US/careers/JobDetail?jobId=128497"
+INFO direct fetch returned nothing usable - trying the rendered fetcher
+INFO keywords for IBM: 15 matched, 12 asked for but unsupported
+INFO IBM: resume covers 100% of the posting's keywords
+INFO research: 4 verified fact(s) about IBM
+
+  IBM — Software Developer Intern 2027
+  Lowell, MA, Durham, NC, Bellevue, WA, San Jose, CA, Austin, TX · Summer 2027
+  posted 2026-08-11
+  cost   : $0.17
+```
+
+  Same code path as the digest — same tailoring, same four render guardrails, same grounded letter, same delivery — so a hand-added posting is not a lesser application than a collected one. It runs the same gates too, reporting a graduate requirement or a sponsorship bar rather than quietly tailoring for a role you cannot take.
 
 ## License
 
