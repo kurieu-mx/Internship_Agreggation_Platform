@@ -128,14 +128,19 @@ jobs:
           # call. config.py also treats blank as unset, so this is the second
           # of two independent guards against the same mistake.
           MODEL_SCORING: ${{ vars.MODEL_SCORING || 'claude-opus-5' }}
-          MODEL_TAILORING: ${{ vars.MODEL_TAILORING || 'claude-opus-5' }}
+          MODEL_TAILORING: ${{ vars.MODEL_TAILORING || 'claude-sonnet-5' }}
+          MODEL_LETTER: ${{ vars.MODEL_LETTER || 'claude-opus-5' }}
           MODEL_RESEARCH: ${{ vars.MODEL_RESEARCH || 'claude-haiku-4-5' }}
-          # 2.50 rather than the module default of 2.00: a ten-company digest
-          # runs about $1.95 now that every cover letter gets a voice revision
-          # pass, and a ceiling that close to the working cost is a ceiling
-          # that will be hit on a busy day. Hitting it is not graceful - calls
-          # are refused from that point, so the last companies get an
-          # untailored resume and no letter while the first ones got both.
+          # A ceiling for runaway bugs, not a target. Hitting it is not
+          # graceful: calls are refused from that point on, so the last
+          # companies in a run get an untailored resume and no cover letter
+          # while the first ones got both.
+          #
+          # Held at 2.50 through the change that dropped the voice revision
+          # and moved resume tailoring to Sonnet. Those should take a
+          # ten-company day well under a dollar, but that is a projection, and
+          # projections have been wrong about this pipeline twice. Revisit
+          # once a few untouched days are on the ledger.
           #
           # Set the DAILY_BUDGET_USD repository variable to override for a
           # single day - e.g. when a day's verification runs have already

@@ -95,7 +95,8 @@ def test_real_numbers_are_read(monkeypatch):
 
 @pytest.mark.parametrize("name,expected", [
     ("MODEL_SCORING", "claude-opus-5"),
-    ("MODEL_TAILORING", "claude-opus-5"),
+    ("MODEL_TAILORING", "claude-sonnet-5"),
+    ("MODEL_LETTER", "claude-opus-5"),
     ("MODEL_RESEARCH", "claude-haiku-4-5"),
 ])
 def test_a_blank_model_name_never_reaches_the_api(env, name, expected):
@@ -105,7 +106,7 @@ def test_a_blank_model_name_never_reaches_the_api(env, name, expected):
 
 
 def test_a_configured_model_still_overrides(env):
-    assert env(MODEL_TAILORING="claude-sonnet-5").MODEL_TAILORING == "claude-sonnet-5"
+    assert env(MODEL_TAILORING="claude-opus-5").MODEL_TAILORING == "claude-opus-5"
 
 
 def test_blank_list_settings_fall_back_to_their_defaults(env):

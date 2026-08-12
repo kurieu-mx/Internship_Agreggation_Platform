@@ -353,7 +353,7 @@ def write(job: Job, profile: dict, facts: List[str],
                 "Return exactly 3 `what_i_bring` items and exactly 2 "
                 "`selected_work` items."),
         schema=LETTER_SCHEMA,
-        model=model or config.MODEL_TAILORING,
+        model=model or config.MODEL_LETTER,
         cached_prefix=_pool_block(profile),
         max_tokens=8000,
     )
@@ -367,105 +367,27 @@ def write(job: Job, profile: dict, facts: List[str],
     letter["what_i_bring"] = (letter.get("what_i_bring") or [])[:3]
     letter["selected_work"] = (letter.get("selected_work") or [])[:2]
 
-    # Deliberately not forwarding `model`: a caller overriding the writing
-    # model means "write this letter with X", not "spend X-tier money editing
-    # punctuation". The revision tier is chosen independently.
-    return _revise_voice(letter, job, profile)
-
-
-# One pass, not two. Measured on CI across three companies: five revisions
-# fired at roughly $0.076 each, which projects to ~$2.35 for a ten-company
-# digest and breaches the $2 daily cap - at which point the last few companies
-# get an untailored resume and no letter at all. The second pass was also
-# where the value ran out: it took Shield AI from two three-item lists to one,
-# and left Cssmerge exactly where the first pass had. Trading a residual
-# three-item list for three companies keeping their cover letters is not a
-# close call.
-MAX_VOICE_REVISIONS = 1
-
-
-def _revise_voice(letter: dict, job: Job, profile: dict,
-                  model: Optional[str] = None) -> dict:
-    """Revise while the draft is still breaking voice rules and still improving.
-
-    Stating the rules in the prompt is not enough on its own - the em dash in
-    particular survives being asked for politely - so the draft is measured and
-    handed back with the specific violations named. Same shape as every other
-    guardrail here: the prompt asks, the check verifies.
-
-    Each round is kept only if it *scores better*. A rewrite that removes the
-    dashes and doubles the sentence length is not an improvement, and editing
-    prose against a rule sometimes produces exactly that. The loop stops the
-    moment a round fails to improve, which also bounds the cost: a clean draft
-    spends nothing, and a stubborn one spends at most two extra calls before
-    the letter goes out slightly imperfect rather than not at all.
-    """
+    # Measured and logged, never rewritten.
+    #
+    # A second model call used to revise drafts that broke the voice rules. It
+    # worked, and it cost 29% of a digest - a quarter of the bill spent
+    # removing em dashes and three-item lists from prose a better prompt could
+    # have got right the first time. The rules moved into the writing prompt
+    # with worked examples instead, which costs nothing.
+    #
+    # The check stays because it is free and because it is the only evidence
+    # of whether that trade held: these numbers appear on every real run, so a
+    # prompt that stops working shows up in the log rather than in the post.
     from tailor import voice
-    from tailor.resume import _pool_block
 
     prose = voice.letter_prose(letter)
-    if not voice.problems(prose):
-        log.debug("voice ok for %s (%s)", job.company, voice.summarise(prose))
-        return letter
+    faults = voice.problems(prose)
+    log.info("%s: letter voice - %s%s", job.company, voice.summarise(prose),
+             f" ({len(faults)} rule(s) broken)" if faults else " (clean)")
+    for fault in faults:
+        log.debug("  voice: %s", fault)
 
-    log.info("%s: revising letter voice - %s", job.company, voice.summarise(prose))
-
-    for attempt in range(MAX_VOICE_REVISIONS):
-        faults = voice.problems(prose)
-        if not faults:
-            break
-
-        revised = llm.complete_json(
-            system=LETTER_SYSTEM,
-            prompt=(
-                "Here is a draft cover letter. Rewrite it to fix the problems "
-                "listed below, changing nothing else: same facts, same "
-                "structure, same claims, same section contents. Only the "
-                "wording changes.\n\n"
-                "PROBLEMS TO FIX:\n"
-                + "\n".join(f"  {n}. {f}" for n, f in enumerate(faults, 1))
-                + f"\n\nDRAFT:\n{json.dumps(letter, indent=1)}"
-            ),
-            schema=LETTER_SCHEMA,
-            # Not MODEL_TAILORING: the draft exists and the faults are named,
-            # so this is editing to a checklist rather than writing. The
-            # score comparison below is what makes a cheaper model safe here -
-            # a worse revision is discarded, not shipped.
-            model=model or config.MODEL_VOICE,
-            cached_prefix=_pool_block(profile),
-            # 16k rather than 8k: the response is a complete letter, not a
-            # delta, and a revision attempt was observed spending the whole 8k
-            # budget on reasoning and hitting max_tokens before emitting
-            # anything. Effort is left at the run default - dropping it was
-            # tried alongside a cheaper model and the pair produced revisions
-            # that scored no better than the drafts they replaced.
-            max_tokens=16000,
-        )
-        if not revised:
-            log.debug("voice revision returned nothing for %s", job.company)
-            break
-
-        revised["what_i_bring"] = (revised.get("what_i_bring") or [])[:3]
-        revised["selected_work"] = (revised.get("selected_work") or [])[:2]
-
-        after = voice.letter_prose(revised)
-        if not after.strip() or voice.score(after) >= voice.score(prose):
-            log.info("%s: revision %d did not improve the voice - keeping the "
-                     "previous draft", job.company, attempt + 1)
-            break
-
-        letter, prose = revised, after
-        log.info("%s: voice now %s", job.company, voice.summarise(prose))
-
-    remaining = voice.problems(prose)
-    if remaining:
-        # Reported, not enforced. A letter with two three-item lists is worth
-        # sending; a letter that was never written because it could not be made
-        # perfect is not.
-        log.info("%s: sending with %d voice issue(s) remaining",
-                 job.company, len(remaining))
     return letter
-
 
 def ground_selected_work(letter: dict, profile: dict) -> dict:
     """Replace the model's project names and stacks with the profile's own.

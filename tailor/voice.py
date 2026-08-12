@@ -27,9 +27,24 @@ is the most visible symptom rather than the disease - banning it alone would
 just push the same appositive habit onto commas and colons, which is why the
 colon reveal is measured here too.
 
-These are counted, not trusted to a prompt. The letter prompt states the rules
-and this module checks whether they were followed, exactly as the resume's
-provenance and fidelity checks do: the prompt asks, the guardrail verifies.
+How this is enforced, and why it changed
+---------------------------------------
+A second model call used to revise any draft that broke these rules. It
+worked, and it cost 29% of a digest - a quarter of the bill spent deleting em
+dashes from prose a better prompt could have got right the first time. Sonnet
+was tried on that pass and produced revisions no better than the drafts they
+replaced, which was the clue: rewriting five three-item lists while preserving
+every factual claim is composition, not editing, and paying Opus twice to do
+it was the expensive way to fix a prompt.
+
+So the rules live in the writing prompt with worked examples - the technique
+that finally killed the "That is the same shape of problem as..." pivot after
+a flat prohibition had failed - and this module now only measures.
+
+Measuring still matters. The counts are logged on every run, so a prompt that
+stops working shows up in a log line rather than in an application. That is
+the whole feedback loop: free to run, and the only evidence that dropping the
+revision was the right trade.
 """
 
 import re
@@ -201,9 +216,22 @@ they are not hypothetical:
   a full stop, or a rewritten clause does the same work.
 - **At most one colon introducing an explanation.** A colon used for drama is
   an em dash wearing a different hat.
-- **At most one three-item list** in the whole letter. "Autonomy, edge
-  inference, and distributed command-and-control" is a cadence nobody speaks
-  in. Name two things, or name one and be specific about it.
+- **At most one three-item list in the whole letter.** This is the rule that
+  gets broken most, and breaking it is what makes a page sound recited rather
+  than written. Three parallel items is a cadence people write and nobody
+  speaks. Before you finish, count them: if there are two or more, cut all but
+  the strongest.
+
+      Instead of:  Production code in Python, Go, and C++.
+      Write:       Production Go, and enough C++ to be useful in a review.
+      Or:          I write Go day to day.
+
+  The second and third say more than the first, because a list of three is a
+  way of naming things without committing to any of them. Two items force a
+  comparison; one forces a detail.
+
+  This applies to every section, not per section - three lists in three
+  different `what_i_bring` items is still three lists on one page.
 - **Vary sentence length.** Average under 24 words, nothing over 38, and
   include a few short sentences. Uniform length is what makes a page feel
   generated regardless of what it says.
@@ -224,4 +252,8 @@ they are not hypothetical:
   not made it clearly enough.
 
 Write the way a competent engineer writes when they are being direct: plain
-sentences, concrete nouns, no rhetorical scaffolding."""
+sentences, concrete nouns, no rhetorical scaffolding.
+
+Before returning, reread what you wrote and check the two rules that are
+easiest to break without noticing: count the em dashes, and count the
+three-item lists. Nothing else in the pipeline will fix them for you."""

@@ -178,27 +178,32 @@ LLM_BACKEND = _env("LLM_BACKEND", "api").strip().lower()
 # invisible - a good posting ranked tenth simply never appears. Opus.
 MODEL_SCORING = _env("MODEL_SCORING", "claude-opus-5")
 
-# The resume and the cover letter are documents a human reads and judges you
-# on. This is not the place to save two cents. Opus.
-MODEL_TAILORING = _env("MODEL_TAILORING", "claude-opus-5")
+# Resume tailoring. Sonnet, and the reason is the guardrails rather than the
+# price: this step does not write a resume, it picks bullet ids out of a fixed
+# pool and lightly rewords them, and four checks stand behind it - provenance,
+# text fidelity, immutable facts, page count. A weaker model that chooses less
+# well still cannot fabricate anything, because the checks reject it and the
+# untailored master goes out instead.
+#
+# Measured share of a digest's cost before the switch: 31%, the largest single
+# line. Whether the choices get worse is the open question, and the answer
+# comes off a real run rather than a projection - the digest logs keyword
+# coverage per posting, so a drop shows up without a special measurement.
+MODEL_TAILORING = _env("MODEL_TAILORING", "claude-sonnet-5")
 
-# The voice revision pass.
+# The cover letter, kept on Opus deliberately.
 #
-# Sonnet was tried here and did not work, which was worth finding out rather
-# than assuming. The reasoning was sound - the draft already exists, the
-# violations are named explicitly ("remove the 4 em dashes", "split anything
-# over 38 words"), so it looks like constrained editing rather than writing.
-# Measured on the same letter, it was not:
+# It shares nothing with resume tailoring except the word "tailoring". This is
+# composition a human reads and judges, it is the only part of an application
+# that distinguishes it from a template, and its guardrails check whether the
+# facts are traceable - not whether the writing is any good. Nothing downstream
+# would catch a duller letter, so the model is where that quality has to come
+# from.
 #
-#     Opus    $0.158   0 dashes, 1 three-item list, 16w mean   no issues left
-#     Sonnet  $0.080   0 dashes, 5 three-item lists, 23w mean  2 issues left
-#
-# Sonnet's revision scored no better than the draft it was given, so the
-# score comparison in _revise_voice discarded it and the letter went out with
-# its tells intact. Half the cost for a feature that stops working is not a
-# saving. Left configurable because a better revision prompt might change the
-# answer, but the default is the one that was measured to work.
-MODEL_VOICE = _env("MODEL_VOICE", "claude-opus-5")
+# It was one setting with MODEL_TAILORING until the two jobs were separated:
+# "select from a validated pool" and "write something worth reading" have
+# opposite tolerances for a cheaper model.
+MODEL_LETTER = _env("MODEL_LETTER", "claude-opus-5")
 
 # Company research is extraction: pull verifiable facts out of a careers page.
 # No judgement, and the output is validated against the source text before it

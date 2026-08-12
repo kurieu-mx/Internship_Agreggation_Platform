@@ -96,14 +96,17 @@ The letterhead uses the company's real logo and a colour extracted from its own 
 
 The through-line is uniformity: a person writing five cover letters produces five rhythms, and this produced one rhythm thirty-one times. Banning the em dash alone would only push the same appositive habit onto colons, which is why both are counted.
 
-`tailor/voice.py` states the rules and measures whether they were followed, so the prompt and the check cannot drift apart. A draft that breaks them is handed back with the specific violations named, and a revision is kept **only if it scores better** — removing the dashes while doubling the sentence length is not an improvement, and editing prose against a rule sometimes produces exactly that. The loop stops as soon as a round fails to improve, so a clean draft costs nothing and a stubborn one costs at most two extra calls:
+`tailor/voice.py` holds the rules and the check that measures them, in one module so they cannot drift apart. The rules live in the writing prompt with worked examples, because prohibitions alone do not move a model: told not to write "That is the same shape of problem as…", it wrote "That is the kind of back-end work…" instead, and only stopped when shown the sentence rewritten three ways with the shortest marked as usually right.
+
+A second model call used to *revise* drafts that broke the rules. It worked, and it cost 29% of a digest — a quarter of the bill spent deleting em dashes from prose a better prompt could have got right the first time. Sonnet was tried on that pass and produced revisions no better than the drafts they replaced, which was the clue: rewriting five three-item lists while preserving every factual claim is composition, not editing, and paying Opus twice was the expensive way to fix a prompt.
+
+So the check now only measures, and logs what it finds on every run:
 
 ```console
-INFO IBM: revising letter voice - 0 dashes, 7 triples, 1 colon-reveals, 24w mean sentence
-INFO IBM: voice now 0 dashes, 1 triples, 0 colon-reveals, 16w mean sentence
+INFO IBM: letter voice - 0 dashes, 1 triples, 0 colon-reveals, 16w mean sentence (clean)
 ```
 
-Reported, never enforced. A letter with two three-item lists is worth sending; a letter that was never written because it could not be made perfect is not.
+Free to run, and the only evidence of whether the trade held — a prompt that stops working shows up in a log line rather than in an application.
 
 ---
 
@@ -209,7 +212,7 @@ $ make doctor
 | `make digest-dry` | Build the full digest, send nothing |
 | `make digest` | Build and send |
 | `python main.py --apply-url <url>` | Tailor and email one posting by link |
-| `make test` | 615 tests |
+| `make test` | 714 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.
 
@@ -227,32 +230,45 @@ Requires six repository secrets: `ANTHROPIC_API_KEY`, `COMPOSIO_API_KEY`, `COMPO
 
 ## Cost
 
-Measured with `count_tokens` against a real profile and a real posting, at ten companies a day:
+**Read the ledger, not the projection.** `store.py` records every call's tokens and cost, and that table is the only account of money actually spent:
 
-| Setup | Per day | Per month |
+| Day | Calls | Spent |
 |---|---|---|
-| **Opus for writing, Haiku for research** | **$0.72** | **~$22** |
-| All Opus | $0.92 | ~$28 |
-| All Sonnet | $0.55 | ~$17 |
+| 2026-08-11 | 82 | **$3.14** |
+| 2026-08-12 | 80 | **$2.99** |
 
-Split by what each call does rather than to shave the bill: scoring decides which companies you apply to, and the resume and letter are documents a human judges you on — neither is the place to save two cents. Company research is extraction whose output is validated against its source, so a cheaper model cannot smuggle anything through.
+Both were development days — a dozen local digest runs, a model experiment, repeated cover-letter regenerations. The single scheduled 3pm send on 08-12 cost **$0.52** for three companies. What an untouched day costs is not yet on the ledger, and will not be guessed at here.
 
-Prompt caching carries about three-quarters of input volume at a tenth of the price; without it the same run is roughly $1.10.
+`make costs` counts tokens with `count_tokens` (free) and projects a day. Treat it as a **floor**: it prices one clean pass, and real runs also pay for resume budget step-downs, longer descriptions than the sample, and cache writes. Observed has run about 1.7× the projection.
 
-Quiet days cost nothing — no fresh postings means no calls at all.
+Where the money goes, off the ledger:
 
-Those are the `count_tokens` projections. What the spend table actually
-records is higher — 80 calls and $2.99 on 2026-08-12, 82 and $3.14 the day
-before — because a digest reranks a wider pool than ten postings and the voice
-revision adds a pass. Run `make costs` for the current figures rather than
-trusting this table.
+```
+output        73.3%   ← generated text at $25/MTok
+new input     13.7%
+cache write   10.6%
+cache read     2.4%
+```
+
+Three quarters of the bill is text being *written*. Collection is free — the 591-posting sweep across eight sources costs nothing, and prompt caching already carries the input side at a tenth of list price. Cost scales with documents generated, not postings found.
+
+That is why the models are split by what each call does:
+
+| Step | Model | Why |
+|---|---|---|
+| rerank | Opus | decides which companies you apply to, and its mistakes are invisible — a good posting ranked eleventh never appears |
+| resume tailoring | **Sonnet** | selection from a validated pool, with four guardrails that reject anything it gets wrong |
+| cover letter | Opus | composition a human judges you on; nothing downstream catches a duller letter |
+| company research | Haiku | extraction, validated against its source — 23% of calls for 2% of the cost |
+
+Quiet days cost nothing: no fresh postings means no calls at all.
 
 ---
 
 ## The dashboard
 
-Pasting a link into `--apply-url` runs six model calls — extraction, scoring,
-resume tailoring, then research, drafting and voice revision for the letter —
+Pasting a link into `--apply-url` runs five model calls — extraction, scoring,
+resume tailoring, then research and drafting for the letter —
 which measures at roughly $0.25–0.30 on the API. That is a fine price once a
 day and a bad one for an afternoon of pasting links.
 
