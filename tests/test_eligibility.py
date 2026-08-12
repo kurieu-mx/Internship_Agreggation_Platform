@@ -318,3 +318,79 @@ def test_the_batch_filter_tolerates_an_empty_list():
     from eligibility import only_undergraduate_eligible
 
     assert only_undergraduate_eligible([]) == []
+
+
+# -- company names that are really title fragments ---------------------------
+#
+# The search-backed sources split a posting heading on a dash and treat what
+# follows as the employer. Observed live: LinkedIn returned
+# title="Quantitative Research Internship", company="Master's: Summer 2027".
+# The degree requirement was on the page, in the wrong field, so the
+# undergraduate filter passed a Master's-only quant role - and a cover letter
+# would have been addressed to a company that does not exist.
+
+
+from eligibility import (drop_malformed, looks_like_title_fragment,
+                         requires_graduate_degree)
+
+
+@pytest.mark.parametrize("company", [
+    "Master's: Summer 2027",
+    "Elevate/Data Science [UG/Masters]",
+    "Summer 2027",
+    "Software Engineering Internship",
+    "Quantitative Research Intern",
+])
+def test_a_title_fragment_is_recognised(company):
+    assert looks_like_title_fragment(company)
+
+
+@pytest.mark.parametrize("company", [
+    "Susquehanna International Group (SIG)",
+    "Masters Gallery Foods",          # a real company with a degree word in it
+    "Jane Street",
+    "Sargent & Lundy",
+    "IBM",
+    "Applied Intuition",
+    "",
+])
+def test_a_real_company_name_is_left_alone(company):
+    assert not looks_like_title_fragment(company)
+
+
+def test_a_degree_in_a_fragment_company_still_disqualifies():
+    """The bug this fixes: the requirement was read out of the wrong field."""
+    job = Job(company="Master's: Summer 2027",
+              title="Quantitative Research Internship",
+              locations=["New York, NY"], field_category="Quant")
+    assert requires_graduate_degree(job)
+
+
+def test_a_degree_word_in_a_real_company_name_does_not_disqualify():
+    """"Masters Gallery Foods" is an employer, not a requirement."""
+    job = Job(company="Masters Gallery Foods", title="Software Engineer Intern",
+              locations=["WI"], field_category="Software Engineering")
+    assert not requires_graduate_degree(job)
+
+
+def test_a_ug_or_masters_fragment_is_still_undergraduate_eligible():
+    """"[UG/Masters]" is either/or - the same rule as "Bachelor's or Master's"."""
+    job = Job(company="Elevate/Data Science [UG/Masters]",
+              title="Summer 2027 Intern", locations=["NY"],
+              field_category="AI / ML / Data")
+    assert not requires_graduate_degree(job)
+
+
+def test_malformed_postings_are_dropped_from_the_run():
+    good = Job(company="Susquehanna International Group (SIG)",
+               title="Trading System Engineering Intern",
+               locations=["Philadelphia, PA"], field_category="Software Engineering")
+    bad = Job(company="Master's: Summer 2027", title="Quantitative Research Internship",
+              locations=["New York, NY"], field_category="Quant")
+    assert drop_malformed([good, bad]) == [good]
+
+
+def test_dropping_nothing_is_fine():
+    good = Job(company="IBM", title="Software Developer Intern",
+               locations=["Austin, TX"], field_category="Software Engineering")
+    assert drop_malformed([good]) == [good]

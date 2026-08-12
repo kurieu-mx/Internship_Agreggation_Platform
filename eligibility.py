@@ -139,7 +139,10 @@ def annotate(jobs: Iterable[Job]) -> List[Job]:
 # graduate degree" but "is a bachelor's student eligible" - "Bachelor's or
 # Master's" and "BS/MS" are open to undergraduates and must be kept.
 _BACHELORS_RE = re.compile(
-    r"\b(bachelor'?s?|b\.?s\.?e?\.?|b\.?a\.?|undergrad(uate)?|bs/ms|bs\s*/\s*ms)\b",
+    # "ug" is included because postings abbreviate it: "[UG/Masters]" is an
+    # either/or open to undergraduates, and without it that reads as
+    # Masters-only and gets dropped.
+    r"\b(bachelor'?s?|b\.?s\.?e?\.?|b\.?a\.?|undergrad(uate)?|ug|bs/ms|bs\s*/\s*ms)\b",
     re.I,
 )
 _GRADUATE_RE = re.compile(
@@ -152,6 +155,32 @@ _GRAD_REQUIREMENT_RE = re.compile(
     r"[^.]{0,80}?\b(ph\.?d|doctoral|master'?s|m\.?s\.?c?\b|graduate program)",
     re.I,
 )
+
+
+# A company value that is really a piece of the job title. The search sources
+# split a posting's heading on a dash and take whatever follows as the
+# employer, which produces "Master's: Summer 2027" and
+# "Elevate/Data Science [UG/Masters]" as company names.
+#
+# Deliberately shape-based rather than keyword-based: a real employer name
+# does not carry a colon, a bracket, or a hiring term, and matching on shape
+# means this keeps working for fragments nobody has seen yet.
+_TITLE_FRAGMENT_RE = re.compile(
+    r"[:\[\]]"                                    # "Master's: Summer 2027"
+    r"|\b(summer|fall|winter|spring)\s+20\d{2}"   # a term, not a company
+    r"|\b(intern(ship)?|co-?op|new ?grad)\b",     # a role, not a company
+    re.I,
+)
+
+
+def looks_like_title_fragment(company: str) -> bool:
+    """Is this 'company' actually a piece of the job title?
+
+    Used to decide whether the company field is worth reading for signals that
+    belong to the posting - and, in the digest, whether a letter addressed to
+    it would embarrass you.
+    """
+    return bool(company and _TITLE_FRAGMENT_RE.search(company))
 
 
 def requires_graduate_degree(job: Job) -> bool:
@@ -178,8 +207,23 @@ def requires_graduate_degree(job: Job) -> bool:
             return True
         return False
 
-    # 2. The title, but only when it names a level at all.
-    if _GRADUATE_RE.search(job.title) and not _BACHELORS_RE.search(job.title):
+    # 2. The title, plus a company field that is obviously a fragment of one.
+    #
+    # The search sources split a posting's heading into title and company, and
+    # they do it badly: "Quantitative Research Internship - Master's: Summer
+    # 2027" arrived as title="Quantitative Research Internship" with
+    # company="Master's: Summer 2027". The degree requirement was on the page,
+    # just in the wrong field, and reading only the title let a Master's-only
+    # quant role through as undergraduate-eligible.
+    #
+    # Only *malformed* company values are folded in, never well-formed ones -
+    # a real employer called "Masters Gallery Foods" must not be mistaken for
+    # a degree requirement.
+    heading = job.title
+    if looks_like_title_fragment(job.company):
+        heading = f"{job.title} {job.company}"
+
+    if _GRADUATE_RE.search(heading) and not _BACHELORS_RE.search(heading):
         return True
 
     # 3. The description, checking each matched requirement in isolation so a
@@ -209,6 +253,32 @@ def only_undergraduate_eligible(jobs: Iterable[Job]) -> List[Job]:
         for job in dropped:
             log.debug("  graduate-only: %s - %s (degrees=%s)",
                       job.company, job.title, job.degrees or "unstated")
+    return kept
+
+
+def drop_malformed(jobs: Iterable[Job]) -> List[Job]:
+    """Drop postings whose employer name is a fragment of their own title.
+
+    These come from the two search-backed sources, which split a heading on a
+    dash and treat whatever follows as the company. The result is a posting
+    that survives every other filter and then takes a tailoring slot, so a
+    cover letter gets addressed to "Master's: Summer 2027" and a resume is
+    tailored for an employer that does not exist.
+
+    Only the malformed ones go. The underlying posting is usually real and
+    usually reachable another way - Susquehanna's board is polled directly -
+    so this costs a duplicate, not an opportunity.
+    """
+    jobs = list(jobs)
+    kept = [job for job in jobs if not looks_like_title_fragment(job.company)]
+    dropped = len(jobs) - len(kept)
+    if dropped:
+        log.info("dropped %d posting(s) whose company name is a title fragment",
+                 dropped)
+        for job in jobs:
+            if job not in kept:
+                log.debug("  malformed company: %r (title %r, source %s)",
+                          job.company, job.title, job.source)
     return kept
 
 

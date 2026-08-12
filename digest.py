@@ -24,7 +24,7 @@ from typing import List, Optional
 
 import config
 from delivery.email import DigestItem, send
-from eligibility import (filter_eligible, only_internships,
+from eligibility import (drop_malformed, filter_eligible, only_internships,
                          only_undergraduate_eligible)
 from freshness import filter_fresh
 from sources import build_sources, collect, deduplicate
@@ -71,6 +71,7 @@ def run(window_hours: Optional[int] = None, top_n: Optional[int] = None,
             jobs = deduplicate(collect(build_sources(config.SOURCES)))
             counts["collected"] = len(jobs)
 
+            jobs = drop_malformed(jobs)
             jobs = only_internships(jobs)
             counts["internships"] = len(jobs)
 
