@@ -8,22 +8,30 @@
 
 Applying to internships is a search problem wearing a writing problem as a hat. The postings worth applying to are scattered across eight places, most of them are stale by the time you see them, and the ones that matter reward applying within a day. Then each one needs a resume that emphasises the right half of your experience and a cover letter that proves you read the posting.
 
-This does all of it at 3pm, every day, for about **70 cents**.
+This does all of it at 3pm, every day. The log below is a real run, taken from the ledger rather than an estimate:
 
 ```console
 $ make digest
-INFO collected 585 postings (greenhouse=25, lever=2, ashby=2, simplify=324, vansh=180, websearch=49, linkedin=3)
+INFO workday: 11 postings from 21/21 boards
+INFO collected 591 postings (greenhouse=25, lever=2, ashby=2, workday=11, simplify=328, vansh=180, websearch=31, linkedin=12)
+INFO dropped 5 posting(s) whose company name is a title fragment
 INFO dropped 6 posting(s) that are not internships
-INFO eligibility: kept 427, dropped 40 as closed to sponsorship
-INFO 26/427 postings inside the 24h window
-INFO prefilter: 24 postings in target categories, taking top 15
-INFO rerank: scored 15 postings, top score 86
-INFO shortlist: 10 postings across 10 companies (cap 1/company)
-INFO research: 4 verified fact(s) about Quantbot Technologies
-INFO rendered Resume_Quantbot_Technologies_Machine_Learning_Research_Engineer.pdf (1 page)
-INFO sent 10 posting(s) with 20 attachments
-INFO this run cost $0.75
+INFO dropped 62 posting(s) requiring a graduate degree
+INFO eligibility: kept 361, dropped 43 as closed to sponsorship
+INFO 6/361 postings inside the 24h window
+INFO prefilter: 3 postings in target categories, taking top 3 (1 at priority employers)
+INFO rerank: scored 3 postings, top score 76
+INFO shortlist: 3 postings across 3 companies (cap 1/company)
+INFO keywords for Sentry: 6 matched (Python, distributed, backend), 2 asked for but unsupported
+INFO rendered Resume_Sentry_Software_Engineer_Intern_Summer_2027.pdf (1 page)
+INFO Sentry: resume covers 100% of the posting's keywords
+INFO research: 3 verified fact(s) about Sentry
+INFO Sentry: letter voice - 0 dashes, 1 triples, 0 colon-reveals, 15w mean sentence (clean)
+INFO sent 3 posting(s) with 6 attachment(s)
+INFO run complete: {'collected': 477, 'fresh': 6, 'shortlisted': 3, 'tailored': 3, 'covers': 3, 'cost_usd': 0.5167}
 ```
+
+Three, not ten, because only six postings were published in the previous 24 hours and three of those were product-management roles. A short digest is the intended behaviour — see [Cost](#cost) for what a day actually runs to, measured off the spend table rather than projected.
 
 ---
 
@@ -112,6 +120,8 @@ Free to run, and the only evidence of whether the trade held — a prompt that s
 
 ## How it works
 
+Two ways in, one pipeline. The scheduled digest sweeps eight sources; a pasted link skips straight to the tailoring stage, because you already decided that posting is worth applying to.
+
 ```mermaid
 flowchart LR
     A[8 sources] --> B[de-duplicate<br/>by authority]
@@ -124,7 +134,13 @@ flowchart LR
     H --> I[tailor + research]
     I --> J[render + validate]
     J --> K[Gmail]
+
+    L["a link<br/>--apply-url / dashboard"] --> M[fetch or paste]
+    M --> N[read the posting<br/>one model call]
+    N --> I
 ```
+
+The two entry points share `apply_url.prepare`, so a posting added by hand gets the same eligibility gates, the same scoring, the same guardrails and the same templates as one the digest found.
 
 | Module | Responsibility |
 |---|---|
@@ -136,8 +152,11 @@ flowchart LR
 | `tailor/keywords.py` | Posting vocabulary, intersected with what the profile can evidence |
 | `tailor/render.py` | The renderer and its four guardrails |
 | `tailor/cover.py` | Grounded research and the sectioned letter |
-| `tailor/voice.py` | The five machine-writing tells, measured and revised out |
+| `tailor/voice.py` | The five machine-writing tells, stated in the prompt and measured on output |
 | `tailor/branding.py` | Logo and brand-colour extraction |
+| `apply_url.py` | One posting by link, for employers no source reaches |
+| `dashboard/` | Local web UI over the same pipeline, on the subscription backend |
+| `llm_cli.py` | The Claude Code backend, and the API key it must not inherit |
 | `budget.py` | Hard daily spend ceiling |
 
 ---
@@ -162,7 +181,7 @@ Workday's `/wday/cxs` endpoint is public JSON, and two of its quirks shape the a
 
 **Silence is not a rejection.** No source reliably publishes a sponsorship field — measured, 100% report `Unknown` — so work-authorisation status is derived from posting text instead, and only some sources publish any. Postings that stay unknown are *kept*; treating silence as a no would discard most of the corpus. The log reports the size of that blind spot on every run.
 
-**Spend is capped in the database, not in memory.** A normal run is ~$0.72. The ceiling exists for the abnormal ones — a retry loop, a config typo, a workflow firing repeatedly. Once reached, model calls are refused and the pipeline degrades exactly as it does when the model is unreachable, so the digest still goes out. A cap held in memory does not cap a crash-loop.
+**Spend is capped in the database, not in memory.** The ceiling exists for abnormal runs — a retry loop, a config typo, a workflow firing repeatedly. Once reached, model calls are refused and the pipeline degrades exactly as it does when the model is unreachable, so the digest still goes out. A cap held in memory does not cap a crash-loop.
 
 **Measured, not estimated.** `make costs` counts real tokens against your real profile via `count_tokens`, which is free. `make verify-render` diffs the rebuilt resume against the original. `make boards` checks every configured job board still resolves. Guessing at any of these was wrong by 20–100% when checked.
 
@@ -212,6 +231,7 @@ $ make doctor
 | `make digest-dry` | Build the full digest, send nothing |
 | `make digest` | Build and send |
 | `python main.py --apply-url <url>` | Tailor and email one posting by link |
+| `make dashboard` | The same, in a browser, on the subscription rather than the API |
 | `make test` | 714 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.

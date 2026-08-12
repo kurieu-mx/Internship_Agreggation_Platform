@@ -12,7 +12,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.11", "3.12"]
+        # 3.10 is the floor: composio requires >=3.10, so a 3.9 job cannot
+        # install the dependencies and fails before running a single test.
+        # It was in this matrix from before the project took that dependency,
+        # and it had been failing every push since - a red badge that said
+        # nothing about the tests, which all passed on 3.11 and 3.12.
+        python-version: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
