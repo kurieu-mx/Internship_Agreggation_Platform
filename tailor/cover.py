@@ -18,6 +18,7 @@ is extraction, and its output is checked. The letter itself runs on the good
 one, because a human reads it.
 """
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -25,6 +26,7 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 import config
+from tailor.voice import VOICE_RULES
 import llm
 from models import Job
 
@@ -154,7 +156,9 @@ RULES
 - It must fit on one page, so be economical: this is a page with structure,
   not a page with more words.
 
-Address the hiring team, not a named individual."""
+Address the hiring team, not a named individual.
+
+""" + VOICE_RULES
 
 
 def _candidate_urls(job: Job) -> List[str]:
@@ -362,6 +366,83 @@ def write(job: Job, profile: dict, facts: List[str],
     # short section beats a padded one.
     letter["what_i_bring"] = (letter.get("what_i_bring") or [])[:3]
     letter["selected_work"] = (letter.get("selected_work") or [])[:2]
+
+    return _revise_voice(letter, job, profile, model)
+
+
+MAX_VOICE_REVISIONS = 2
+
+
+def _revise_voice(letter: dict, job: Job, profile: dict,
+                  model: Optional[str] = None) -> dict:
+    """Revise while the draft is still breaking voice rules and still improving.
+
+    Stating the rules in the prompt is not enough on its own - the em dash in
+    particular survives being asked for politely - so the draft is measured and
+    handed back with the specific violations named. Same shape as every other
+    guardrail here: the prompt asks, the check verifies.
+
+    Each round is kept only if it *scores better*. A rewrite that removes the
+    dashes and doubles the sentence length is not an improvement, and editing
+    prose against a rule sometimes produces exactly that. The loop stops the
+    moment a round fails to improve, which also bounds the cost: a clean draft
+    spends nothing, and a stubborn one spends at most two extra calls before
+    the letter goes out slightly imperfect rather than not at all.
+    """
+    from tailor import voice
+    from tailor.resume import _pool_block
+
+    prose = voice.letter_prose(letter)
+    if not voice.problems(prose):
+        log.debug("voice ok for %s (%s)", job.company, voice.summarise(prose))
+        return letter
+
+    log.info("%s: revising letter voice - %s", job.company, voice.summarise(prose))
+
+    for attempt in range(MAX_VOICE_REVISIONS):
+        faults = voice.problems(prose)
+        if not faults:
+            break
+
+        revised = llm.complete_json(
+            system=LETTER_SYSTEM,
+            prompt=(
+                "Here is a draft cover letter. Rewrite it to fix the problems "
+                "listed below, changing nothing else: same facts, same "
+                "structure, same claims, same section contents. Only the "
+                "wording changes.\n\n"
+                "PROBLEMS TO FIX:\n"
+                + "\n".join(f"  {n}. {f}" for n, f in enumerate(faults, 1))
+                + f"\n\nDRAFT:\n{json.dumps(letter, indent=1)}"
+            ),
+            schema=LETTER_SCHEMA,
+            model=model or config.MODEL_TAILORING,
+            cached_prefix=_pool_block(profile),
+            max_tokens=8000,
+        )
+        if not revised:
+            log.debug("voice revision returned nothing for %s", job.company)
+            break
+
+        revised["what_i_bring"] = (revised.get("what_i_bring") or [])[:3]
+        revised["selected_work"] = (revised.get("selected_work") or [])[:2]
+
+        after = voice.letter_prose(revised)
+        if not after.strip() or voice.score(after) >= voice.score(prose):
+            log.info("%s: revision %d did not improve the voice - keeping the "
+                     "previous draft", job.company, attempt + 1)
+            break
+
+        letter, prose = revised, after
+        log.info("%s: voice now %s", job.company, voice.summarise(prose))
+
+    remaining = voice.problems(prose)
+    if remaining:
+        # Reported, not enforced. A letter with two three-item lists is worth
+        # sending; a letter that was never written because it could not be made
+        # perfect is not.
+        log.info("%s: sending with %d voice issue(s) remaining",
+                 job.company, len(remaining))
     return letter
 
 

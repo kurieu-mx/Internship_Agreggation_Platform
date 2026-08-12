@@ -84,6 +84,27 @@ So it never asks a model what a company does. It fetches the company's own pages
 
 The letterhead uses the company's real logo and a colour extracted from its own pixels — the most *saturated* colour, not the most common, because logos are mostly background.
 
+**And it has to not read as machine-written.** The five tells enforced here were counted across 31 letters this pipeline actually produced, not taken from a list of things people say about AI prose — which matters, because the famous ones were already absent. Across 14,384 words there were zero instances of "excited", "thrilled", "passionate", "align", "resonate", "leverage", "robust", "seamless", "delve", and zero of "I am writing to express my interest". The prompt had banned those from the start. What was left was subtler:
+
+| Tell | Measured | Why it reads as machine |
+|---|---|---|
+| em dash | 151 (4.9/letter) | punctuation as drama |
+| colon-led reveal | 63 (2.0/letter) | the same move, different mark |
+| rule-of-three list | 60 (1.9/letter) | a rhythm nobody speaks in |
+| sentences over ~34 words | median 33 | no short sentences anywhere |
+| "That is the same X as Y" | 13 of 31 letters | one formula, every letter |
+
+The through-line is uniformity: a person writing five cover letters produces five rhythms, and this produced one rhythm thirty-one times. Banning the em dash alone would only push the same appositive habit onto colons, which is why both are counted.
+
+`tailor/voice.py` states the rules and measures whether they were followed, so the prompt and the check cannot drift apart. A draft that breaks them is handed back with the specific violations named, and a revision is kept **only if it scores better** — removing the dashes while doubling the sentence length is not an improvement, and editing prose against a rule sometimes produces exactly that. The loop stops as soon as a round fails to improve, so a clean draft costs nothing and a stubborn one costs at most two extra calls:
+
+```console
+INFO IBM: revising letter voice - 0 dashes, 7 triples, 1 colon-reveals, 24w mean sentence
+INFO IBM: voice now 0 dashes, 1 triples, 0 colon-reveals, 16w mean sentence
+```
+
+Reported, never enforced. A letter with two three-item lists is worth sending; a letter that was never written because it could not be made perfect is not.
+
 ---
 
 ## How it works
@@ -112,6 +133,7 @@ flowchart LR
 | `tailor/keywords.py` | Posting vocabulary, intersected with what the profile can evidence |
 | `tailor/render.py` | The renderer and its four guardrails |
 | `tailor/cover.py` | Grounded research and the sectioned letter |
+| `tailor/voice.py` | The five machine-writing tells, measured and revised out |
 | `tailor/branding.py` | Logo and brand-colour extraction |
 | `budget.py` | Hard daily spend ceiling |
 
@@ -187,7 +209,7 @@ $ make doctor
 | `make digest-dry` | Build the full digest, send nothing |
 | `make digest` | Build and send |
 | `python main.py --apply-url <url>` | Tailor and email one posting by link |
-| `make test` | 588 tests |
+| `make test` | 615 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.
 
