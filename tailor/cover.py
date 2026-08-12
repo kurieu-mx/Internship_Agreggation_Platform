@@ -370,7 +370,15 @@ def write(job: Job, profile: dict, facts: List[str],
     return _revise_voice(letter, job, profile, model)
 
 
-MAX_VOICE_REVISIONS = 2
+# One pass, not two. Measured on CI across three companies: five revisions
+# fired at roughly $0.076 each, which projects to ~$2.35 for a ten-company
+# digest and breaches the $2 daily cap - at which point the last few companies
+# get an untailored resume and no letter at all. The second pass was also
+# where the value ran out: it took Shield AI from two three-item lists to one,
+# and left Cssmerge exactly where the first pass had. Trading a residual
+# three-item list for three companies keeping their cover letters is not a
+# close call.
+MAX_VOICE_REVISIONS = 1
 
 
 def _revise_voice(letter: dict, job: Job, profile: dict,
