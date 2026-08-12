@@ -367,7 +367,10 @@ def write(job: Job, profile: dict, facts: List[str],
     letter["what_i_bring"] = (letter.get("what_i_bring") or [])[:3]
     letter["selected_work"] = (letter.get("selected_work") or [])[:2]
 
-    return _revise_voice(letter, job, profile, model)
+    # Deliberately not forwarding `model`: a caller overriding the writing
+    # model means "write this letter with X", not "spend X-tier money editing
+    # punctuation". The revision tier is chosen independently.
+    return _revise_voice(letter, job, profile)
 
 
 # One pass, not two. Measured on CI across three companies: five revisions
@@ -424,9 +427,19 @@ def _revise_voice(letter: dict, job: Job, profile: dict,
                 + f"\n\nDRAFT:\n{json.dumps(letter, indent=1)}"
             ),
             schema=LETTER_SCHEMA,
-            model=model or config.MODEL_TAILORING,
+            # Not MODEL_TAILORING: the draft exists and the faults are named,
+            # so this is editing to a checklist rather than writing. The
+            # score comparison below is what makes a cheaper model safe here -
+            # a worse revision is discarded, not shipped.
+            model=model or config.MODEL_VOICE,
             cached_prefix=_pool_block(profile),
-            max_tokens=8000,
+            # 16k rather than 8k: the response is a complete letter, not a
+            # delta, and a revision attempt was observed spending the whole 8k
+            # budget on reasoning and hitting max_tokens before emitting
+            # anything. Effort is left at the run default - dropping it was
+            # tried alongside a cheaper model and the pair produced revisions
+            # that scored no better than the drafts they replaced.
+            max_tokens=16000,
         )
         if not revised:
             log.debug("voice revision returned nothing for %s", job.company)

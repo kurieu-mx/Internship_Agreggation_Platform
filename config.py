@@ -169,6 +169,24 @@ MODEL_SCORING = _env("MODEL_SCORING", "claude-opus-5")
 # on. This is not the place to save two cents. Opus.
 MODEL_TAILORING = _env("MODEL_TAILORING", "claude-opus-5")
 
+# The voice revision pass.
+#
+# Sonnet was tried here and did not work, which was worth finding out rather
+# than assuming. The reasoning was sound - the draft already exists, the
+# violations are named explicitly ("remove the 4 em dashes", "split anything
+# over 38 words"), so it looks like constrained editing rather than writing.
+# Measured on the same letter, it was not:
+#
+#     Opus    $0.158   0 dashes, 1 three-item list, 16w mean   no issues left
+#     Sonnet  $0.080   0 dashes, 5 three-item lists, 23w mean  2 issues left
+#
+# Sonnet's revision scored no better than the draft it was given, so the
+# score comparison in _revise_voice discarded it and the letter went out with
+# its tells intact. Half the cost for a feature that stops working is not a
+# saving. Left configurable because a better revision prompt might change the
+# answer, but the default is the one that was measured to work.
+MODEL_VOICE = _env("MODEL_VOICE", "claude-opus-5")
+
 # Company research is extraction: pull verifiable facts out of a careers page.
 # No judgement, and the output is validated against the source text before it
 # reaches a letter, so a weaker model cannot smuggle anything through. Haiku,
