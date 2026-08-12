@@ -57,10 +57,29 @@ def _hours_ago(job: Job, now: datetime) -> str:
 
 
 def subject(items: List[DigestItem], now: datetime) -> str:
+    """The subject line, named after what is actually in the email.
+
+    "Summer 2027" used to be hardcoded here, which is right for the digest and
+    wrong for everything else: a hand-added new-grad or full-time posting went
+    out under a heading naming a term it has nothing to do with. The prefix now
+    follows the postings - their shared term when they have one, the employer
+    when a single posting has none - and only falls back to the configured
+    filter when neither applies.
+    """
     if not items:
-        return f"Summer 2027 — nothing new ({now:%b %-d})"
+        return f"{config.TERM_FILTER or 'Internships'} — nothing new ({now:%b %-d})"
+
+    terms = {term for item in items for term in item.job.terms}
+
+    if len(terms) == 1:
+        prefix = terms.pop()
+    elif not terms and len(items) == 1:
+        prefix = items[0].job.company
+    else:
+        prefix = config.TERM_FILTER or "Internships"
+
     companies = len({item.job.company for item in items})
-    return (f"Summer 2027 — {len(items)} match"
+    return (f"{prefix} — {len(items)} match"
             f"{'es' if len(items) != 1 else ''} at {companies} "
             f"compan{'ies' if companies != 1 else 'y'} ({now:%b %-d})")
 

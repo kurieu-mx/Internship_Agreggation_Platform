@@ -216,3 +216,204 @@ def test_the_flag_is_wired_into_the_cli():
 
     args = build_parser().parse_args(["--apply-url", "https://example.com/job"])
     assert args.apply_url == "https://example.com/job"
+
+
+# -- roles the digest would never surface ------------------------------------
+#
+# The point of this path is postings the 3pm run does not find, which means it
+# has to cope with roles that are not Summer 2027 internships at all.
+
+
+def _job_from(monkeypatch, **fields):
+    extraction = {"company": "Stripe", "title": "Software Engineer, New Grad",
+                  "locations": ["New York, NY"], "posted_date": "", "term": "",
+                  "is_internship": False,
+                  "description": "Build payments infrastructure."}
+    extraction.update(fields)
+    monkeypatch.setattr("llm.available", lambda: True)
+    monkeypatch.setattr("llm.complete_json", lambda **kw: extraction)
+    return apply_url.extract("https://example.com/job", PAGE)
+
+
+def test_terms_is_a_list_of_strings_not_the_infer_terms_tuple(monkeypatch):
+    """infer_terms returns (terms, inferred); assigning it whole broke joins.
+
+    Every consumer joins this field - the CLI line, the store row, the
+    dashboard card, the cover-letter header - so the tuple form raised
+    TypeError on any posting whose page stated no term.
+    """
+    job = _job_from(monkeypatch)
+    assert isinstance(job.terms, list)
+    assert all(isinstance(term, str) for term in job.terms)
+    ", ".join(job.terms)          # would raise on the tuple
+
+
+def test_a_non_internship_with_no_stated_term_gets_no_term(monkeypatch):
+    """The Summer-N+1 fallback is reasoning about internships specifically.
+
+    Stamping it on a new-grad role puts a fabricated "Summer 2027" in the
+    cover-letter header, which a recruiter reads.
+    """
+    job = _job_from(monkeypatch, title="Software Engineer, New Grad")
+    assert job.terms == []
+
+
+def test_a_full_time_role_gets_no_term(monkeypatch):
+    job = _job_from(monkeypatch, title="Senior Machine Learning Engineer")
+    assert job.terms == []
+
+
+def test_an_internship_with_no_stated_term_still_gets_the_inference(monkeypatch):
+    """The digest's behaviour must not regress - the heuristic holds here."""
+    job = _job_from(monkeypatch, title="Software Engineer Intern",
+                    is_internship=True)
+    assert job.terms and all("2027" in term for term in job.terms)
+
+
+def test_a_term_stated_and_grounded_wins_even_on_a_non_internship(monkeypatch):
+    """A full-time posting that really does name a term keeps it."""
+    monkeypatch.setattr("llm.available", lambda: True)
+    monkeypatch.setattr("llm.complete_json", lambda **kw: {
+        "company": "Stripe", "title": "Software Engineer, New Grad",
+        "locations": ["New York, NY"], "posted_date": "", "term": "Fall 2027",
+        "is_internship": False, "description": "Starts in the Fall 2027 cohort."})
+
+    job = apply_url.extract("https://example.com/job",
+                            "Starts in the Fall 2027 cohort.")
+    assert job.terms == ["Fall 2027"]
+
+
+def test_a_year_in_the_title_is_read_rather_than_inferred(monkeypatch):
+    job = _job_from(monkeypatch, title="Software Engineer Intern, Summer 2028",
+                    is_internship=True)
+    assert job.terms == ["Summer 2028"]
+
+
+def test_a_non_internship_is_noted_not_warned(monkeypatch):
+    """Applying to a new-grad role is the point, not a problem to flag.
+
+    A warning on every non-internship card would sit next to the sponsorship
+    warning until neither got read.
+    """
+    job = _job_from(monkeypatch, title="Software Engineer, New Grad")
+    levels = {level for level, message in apply_url.check_gates(job)
+              if "does not read as an internship" in message}
+    assert levels == {"note"}
+
+
+def test_a_sponsorship_bar_is_still_a_warning(monkeypatch):
+    """The distinction is only useful if real eligibility bars stay loud."""
+    from models import Job
+
+    job = Job(company="Anduril", title="Software Engineer, New Grad",
+              locations=["CA"], field_category="Software Engineering",
+              description="Applicants must be US citizens.")
+    findings = apply_url.check_gates(job)
+    assert any(level == "warn" and "sponsorship" in message
+               for level, message in findings)
+
+
+# -- pasted descriptions -----------------------------------------------------
+
+
+def test_a_pasted_description_skips_the_fetch(monkeypatch, tmp_path):
+    """A gated page costs nothing when the text is supplied."""
+    def explode(url):
+        raise AssertionError("nothing should be fetched when text is pasted")
+
+    monkeypatch.setattr(apply_url, "fetch_posting", explode)
+
+    captured = {}
+
+    def fake_extract(url, text):
+        captured["text"] = text
+        return None                # stop before tailoring; the fetch is the point
+
+    monkeypatch.setattr(apply_url, "extract", fake_extract)
+
+    apply_url.prepare("https://example.com/job", tmp_path,
+                      description="Pasted posting body.")
+    assert captured["text"] == "Pasted posting body."
+
+
+def test_a_blank_description_falls_back_to_fetching(monkeypatch, tmp_path):
+    monkeypatch.setattr(apply_url, "fetch_posting", lambda url: "FETCHED")
+
+    captured = {}
+
+    def fake_extract(url, text):
+        captured["text"] = text
+        return None
+
+    monkeypatch.setattr(apply_url, "extract", fake_extract)
+
+    apply_url.prepare("https://example.com/job", tmp_path, description="   ")
+    assert captured["text"] == "FETCHED"
+
+
+def test_a_missing_description_file_exits_two(tmp_path):
+    assert apply_url.run("https://example.com/job",
+                         description_file=str(tmp_path / "nope.txt")) == 2
+
+
+def test_an_empty_description_file_exits_two(tmp_path):
+    empty = tmp_path / "empty.txt"
+    empty.write_text("   \n")
+    assert apply_url.run("https://example.com/job",
+                         description_file=str(empty)) == 2
+
+
+def test_a_stated_term_absent_from_the_posting_is_dropped(monkeypatch):
+    """The model invents seasons for full-time roles that state only a year.
+
+    Told plainly that a start date is not a term it still answered
+    "Summer 2027" for a new-grad posting whose text says "starting in 2027",
+    so the answer is checked against the text rather than trusted.
+    """
+    monkeypatch.setattr("llm.available", lambda: True)
+    monkeypatch.setattr("llm.complete_json", lambda **kw: {
+        "company": "Stripe", "title": "Software Engineer, New Grad",
+        "locations": ["New York, NY"], "posted_date": "",
+        "term": "Summer 2027", "is_internship": False,
+        "description": "Full-time role starting in 2027."})
+
+    job = apply_url.extract("https://example.com/job",
+                            "Full-time role starting in 2027. No season named.")
+    assert job.terms == []
+
+
+def test_a_stated_term_present_in_the_posting_is_kept(monkeypatch):
+    monkeypatch.setattr("llm.available", lambda: True)
+    monkeypatch.setattr("llm.complete_json", lambda **kw: {
+        "company": "Ramp", "title": "Software Engineer Co-op",
+        "locations": ["New York, NY"], "posted_date": "",
+        "term": "Fall 2027", "is_internship": True,
+        "description": "Our Fall 2027 co-op cohort."})
+
+    job = apply_url.extract("https://example.com/job",
+                            "Applications for the Fall 2027 co-op are open.")
+    assert job.terms == ["Fall 2027"]
+
+
+def test_the_grounding_check_ignores_case_and_spacing(monkeypatch):
+    monkeypatch.setattr("llm.available", lambda: True)
+    monkeypatch.setattr("llm.complete_json", lambda **kw: {
+        "company": "Ramp", "title": "SWE Intern", "locations": ["NY"],
+        "posted_date": "", "term": "Summer 2027", "is_internship": True,
+        "description": "x"})
+
+    job = apply_url.extract("https://example.com/job",
+                            "Join us for   SUMMER   2027 in New York.")
+    assert job.terms == ["Summer 2027"]
+
+
+def test_a_dropped_term_still_falls_back_for_a_real_internship(monkeypatch):
+    """Dropping an ungrounded term must not strip a genuine internship."""
+    monkeypatch.setattr("llm.available", lambda: True)
+    monkeypatch.setattr("llm.complete_json", lambda **kw: {
+        "company": "Acme", "title": "Software Engineer Intern",
+        "locations": ["NY"], "posted_date": "", "term": "Winter 2099",
+        "is_internship": True, "description": "Build things."})
+
+    job = apply_url.extract("https://example.com/job", "Build things. No term named.")
+    assert job.terms and "Winter 2099" not in job.terms

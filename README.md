@@ -266,6 +266,27 @@ It is the same pipeline, not a parallel one — `apply_url.prepare` is what both
 the CLI and the browser call, so a posting submitted either way gets the same
 eligibility gates, the same scoring and the same templates.
 
+### Postings the digest would never find
+
+The 3pm run looks for Summer 2027 SWE/quant/AI-ML internships. This path is for
+everything else — new-grad, co-op, full-time, a role at a company no source
+covers — so it does not assume any of that:
+
+- **Paste the description when the page will not load.** Portals behind a
+  login, a posting that arrived by email, a PDF from a recruiter. Fill in the
+  textarea (or pass `--description-file`) and nothing is fetched at all; the
+  URL is still used as the apply link and the branding key.
+- **No term is invented.** A new-grad posting whose text says "starting in
+  2027" is not a Summer 2027 internship, and the term is printed in the cover
+  letter header. A stated term is kept only if it actually appears in the
+  posting text, and the seasonal fallback applies only to titles that read as
+  internships — otherwise the field is left empty.
+- **The subject line follows the posting**, rather than saying "Summer 2027"
+  over a full-time application.
+- **"Not an internship" is a note, not a warning.** Applying to those is the
+  point here. Warnings are reserved for things that can waste an application —
+  a sponsorship bar, a graduate-degree requirement.
+
 Two things the backend does not change, and one it cannot:
 
 - **An API key silently wins.** A set `ANTHROPIC_API_KEY` takes precedence

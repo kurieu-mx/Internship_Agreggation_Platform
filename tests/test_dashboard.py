@@ -223,3 +223,79 @@ def test_the_newest_submission_is_listed_first(client, monkeypatch, tmp_path):
 
     body = client.get("/").text
     assert body.index("Omega") < body.index("Alpha")
+
+
+# --- pasted descriptions ----------------------------------------------------
+#
+# The postings this dashboard exists for are disproportionately the ones the
+# fetchers cannot reach, so the paste path is the feature, not a fallback.
+
+
+def test_a_pasted_description_reaches_the_pipeline(client, monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_prepare(url, out_dir, **kw):
+        captured.update(url=url, description=kw.get("description", ""))
+        prepared = _prepared(tmp_path)
+        prepared.pasted = True
+        return prepared
+
+    monkeypatch.setattr(apply_url, "prepare", fake_prepare)
+
+    client.post("/apply", data={"url": "https://careers.example.com/x",
+                                "description": "Build payments infrastructure."},
+                follow_redirects=False)
+
+    assert captured["description"] == "Build payments infrastructure."
+    assert captured["url"] == "https://careers.example.com/x"
+
+
+def test_a_pasted_submission_is_labelled_on_the_card(client, monkeypatch, tmp_path):
+    prepared = _prepared(tmp_path)
+    prepared.pasted = True
+    monkeypatch.setattr(apply_url, "prepare", lambda url, out_dir, **kw: prepared)
+
+    client.post("/apply", data={"url": "https://example.com/x",
+                                "description": "text"}, follow_redirects=False)
+    assert "from pasted text" in client.get("/").text
+
+
+def test_a_url_is_still_required_when_text_is_pasted(client, monkeypatch):
+    """The URL is the apply link and the branding key, not just a fetch target."""
+    def explode(*a, **kw):
+        raise AssertionError("the pipeline must not run without a URL")
+
+    monkeypatch.setattr(apply_url, "prepare", explode)
+
+    client.post("/apply", data={"url": "not-a-url", "description": "text"},
+                follow_redirects=False)
+    assert "does not look like a URL" in client.get("/").text
+
+
+def test_an_unfetchable_page_tells_you_to_paste(client, monkeypatch):
+    monkeypatch.setattr(apply_url, "prepare", lambda url, out_dir, **kw: None)
+
+    client.post("/apply", data={"url": "https://gated.example.com/x"},
+                follow_redirects=False)
+    body = client.get("/").text
+    assert "behind a login" in body and "Paste the description" in body
+
+
+def test_unreadable_pasted_text_does_not_suggest_pasting_again(client, monkeypatch):
+    """Different failure, different fix - repeating the advice is noise."""
+    monkeypatch.setattr(apply_url, "prepare", lambda url, out_dir, **kw: None)
+
+    client.post("/apply", data={"url": "https://example.com/x",
+                                "description": "asdf"}, follow_redirects=False)
+    body = client.get("/").text
+
+    # Scoped to the error card: the form's own hint mentions logins too, and
+    # that copy is always on the page.
+    card = body[body.index('<div class="card">'):]
+    assert "could not be read as a job posting" in card
+    assert "behind a login" not in card
+
+
+def test_the_form_offers_the_paste_field(client):
+    body = client.get("/").text
+    assert 'name="description"' in body and "<textarea" in body

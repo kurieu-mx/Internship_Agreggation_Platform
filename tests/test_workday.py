@@ -314,3 +314,20 @@ def test_the_bonus_cannot_outweigh_a_strong_keyword_match():
     strong.title = "PyTorch CUDA Distributed Systems Intern"
     strong.description = "python c++ pytorch cuda distributed"
     assert keyword_score(strong, weights) > config.PRIORITY_BONUS_TIER1
+
+
+def test_terms_is_a_list_of_strings_not_the_infer_terms_tuple(monkeypatch):
+    """infer_terms returns (terms, inferred) and was being assigned whole.
+
+    Greenhouse, Lever and Ashby unpack it; this adapter did not, so a Workday
+    posting carried ``(['Summer 2027'], True)`` into Job.terms - a list and a
+    bool where a list of strings belongs. Every consumer joins that field, so
+    the digest crashed on the first Workday posting whose text named no year.
+    """
+    pages = [_page(_listing("Software Intern", "Posted Today"))]
+    source, _ = _source(monkeypatch, pages)
+    job = source.scrape_board(BOARD)[0]
+
+    assert isinstance(job.terms, list)
+    assert all(isinstance(term, str) for term in job.terms)
+    ", ".join(job.terms)          # would raise TypeError on the tuple

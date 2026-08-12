@@ -169,6 +169,12 @@ button { padding:.7rem 1.2rem; font-size:1rem; font-weight:550; cursor:pointer;
 .err { color:var(--warn); font-size:.9rem; margin:0; }
 .foot { color:var(--muted); font-size:.8rem; margin-top:2rem;
        border-top:1px solid var(--line); padding-top:.9rem; }
+details { flex:1 1 100%; margin-top:.2rem; }
+summary { cursor:pointer; color:var(--muted); font-size:.87rem; }
+.hint { color:var(--muted); font-size:.82rem; margin:.5rem 0 .4rem; }
+textarea { width:100%; padding:.7rem .85rem; font-size:.92rem; font-family:inherit;
+       border:1px solid var(--line); border-radius:8px; background:var(--card);
+       color:var(--fg); resize:vertical; }
 code { background:var(--warn-bg); color:var(--warn); padding:.1rem .35rem;
        border-radius:4px; font-size:.85em; }
 """
@@ -220,10 +226,11 @@ def _card(submission: Submission) -> str:
                     + (f" · missing {escape(missing)}" if missing else "") + "</p>")
 
     stale = "" if prepared.tailored else '<span class="tag">untailored</span>'
+    source = '<span class="tag">from pasted text</span>' if prepared.pasted else ""
 
     return (
         f'<div class="card">'
-        f'<h2>{escape(job.company)} — {escape(job.title)}{stale}</h2>'
+        f'<h2>{escape(job.company)} — {escape(job.title)}{stale}{source}</h2>'
         f'<p class="meta">{escape(where)} · {escape(job.field_category)} · '
         f'{escape(terms)} · match {score}</p>'
         f'<p class="meta"><a href="{url}" target="_blank" rel="noopener">{url}</a></p>'
@@ -248,7 +255,14 @@ def _page(body: str, refresh: bool) -> str:
         f'same eligibility gates, same templates.</p>'
         f'<form method="post" action="/apply">'
         f'<input type="url" name="url" placeholder="https://…" required autofocus>'
-        f'<button type="submit">Build</button></form>'
+        f'<button type="submit">Build</button>'
+        f'<details><summary>Paste the description instead</summary>'
+        f'<p class="hint">For pages behind a login, or a posting that arrived '
+        f'by email. The URL above is still used as the apply link. When this '
+        f'is filled in, nothing is fetched.</p>'
+        f'<textarea name="description" rows="10" '
+        f'placeholder="Responsibilities, requirements, qualifications…"></textarea>'
+        f'</details></form>'
         f'{body}'
         f'<p class="foot">{escape(backend)}.</p>'
         f'</main></body></html>'

@@ -81,6 +81,11 @@ are given:
   boilerplate, equal-opportunity statements, and company culture filler.
 - `posted_date` only if the page states one. Do not infer it from wording like
   "posted recently". Empty string if absent.
+- `term` is the academic term an internship or co-op cohort is for, such as
+  "Summer 2027". Leave it empty for a full-time or new-grad role: a start
+  date, a graduation window, or a year on its own is not a term, and this
+  field is printed on the cover letter, so a season invented for a full-time
+  role puts a detail in front of a recruiter that the posting never claimed.
 - If the page is not a job posting at all - a search page, a login wall, an
   error - set `is_internship` false and leave `description` empty."""
 
@@ -158,8 +163,17 @@ def _parse_date(value: str) -> Optional[datetime]:
     return None
 
 
-def _terms_for(result: dict, title: str, description: str) -> List[str]:
+def _terms_for(result: dict, title: str, description: str,
+               source: str = "") -> List[str]:
     """Which academic term this posting is for, or nothing if we cannot tell.
+
+    A stated term is checked against ``source`` before it is believed. Asking
+    the model not to invent one is not enough - told plainly that a start date
+    is not a term, it still answered "Summer 2027" for a full-time new-grad
+    role whose text says only "starting in 2027", and answered "2027" on
+    another run of the same posting. This is the same problem ``validate_facts``
+    solves for company research, and the same answer: the term has to appear in
+    the text it was read from, or it did not come from there.
 
     Three things were wrong with reading it straight off ``infer_terms``.
 
@@ -186,11 +200,25 @@ def _terms_for(result: dict, title: str, description: str) -> List[str]:
 
     stated = (result.get("term") or "").strip()
     if stated:
-        return [stated]
+        # Compared on collapsed whitespace and case only. Anything cleverer
+        # starts guessing at what the model meant, which is the failure being
+        # defended against.
+        haystack = " ".join(f"{source} {title} {description}".lower().split())
+        if " ".join(stated.lower().split()) in haystack:
+            return [stated]
+        log.info("dropping term %r - it does not appear in the posting text", stated)
 
-    terms, inferred = infer_terms(title, description)
-    if inferred and not looks_like_internship(title):
+    # Past this point every candidate is reasoning rather than reading, and
+    # that reasoning is about internships: infer_terms supplies a *season* it
+    # never saw, defaulting to summer, whether it took the year off the title
+    # or out of the body. On a full-time posting that turns "starting in 2027"
+    # into "Summer 2027". So a role that does not read as an internship keeps a
+    # term only when one was literally written down, which the branch above
+    # already handled.
+    if not looks_like_internship(title):
         return []
+
+    terms, _inferred = infer_terms(title, description)
     return list(terms)
 
 
@@ -234,7 +262,7 @@ def extract(url: str, text: str) -> Optional[Job]:
         url=url,
         description=description,
         field_category=categorize_title(title),
-        terms=_terms_for(result, title, description),
+        terms=_terms_for(result, title, description, source=text),
         work_mode=infer_work_mode(us_locations),
         posted_at=_parse_date(result.get("posted_date") or ""),
         external_id=(urlparse(url).query or "")[:60],
@@ -250,10 +278,15 @@ def check_gates(job: Job) -> List[Tuple[str, str]]:
     decision to apply anyway is yours - but you should know before the letter
     is written, not after the interview.
 
-    Returns ``(level, message)`` pairs, where level is ``warn`` or ``note``, so
-    a terminal and a browser can render the same findings differently without
-    either one re-deriving them. Sets ``job.sponsorship`` as a side effect,
-    which the email body and the dashboard both read.
+    Returns ``(level, message)`` pairs. ``warn`` means you may be ineligible;
+    ``note`` is an observation about what the posting is. The split matters
+    because this path is used for roles the digest would never surface -
+    new-grad, co-op, full-time - and flagging every one of those as a warning
+    would put an orange box on every card until you stopped reading them,
+    including the sponsorship one that can actually waste an application.
+
+    Sets ``job.sponsorship`` as a side effect, which the email body and the
+    dashboard both read.
     """
     from eligibility import detect_restriction, requires_graduate_degree
     from sources.ats import looks_like_internship
@@ -261,7 +294,7 @@ def check_gates(job: Job) -> List[Tuple[str, str]]:
     findings: List[Tuple[str, str]] = []
 
     if not looks_like_internship(job.title):
-        findings.append(("warn", "this title does not read as an internship"))
+        findings.append(("note", "this title does not read as an internship"))
 
     if requires_graduate_degree(job):
         findings.append(("warn", "this posting appears to require a graduate degree"))

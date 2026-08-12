@@ -300,3 +300,52 @@ def test_an_unusable_name_yields_nothing():
     from tailor.branding import company_domains
 
     assert company_domains("") == []
+
+
+# -- subject lines for postings the digest did not find -----------------------
+
+
+def _item(company, title, terms):
+    from delivery.email import DigestItem
+    from models import Job
+
+    return DigestItem(Job(company=company, title=title, terms=list(terms),
+                          locations=["NY"], field_category="Software Engineering"))
+
+
+def test_a_digest_of_one_term_is_named_after_it():
+    from delivery.email import subject
+
+    line = subject([_item("Citadel", "SWE Intern", ["Summer 2027"]),
+                    _item("Jane Street", "SWE Intern", ["Summer 2027"])], NOW)
+    assert line.startswith("Summer 2027 — 2 matches at 2 companies")
+
+
+def test_a_single_termless_posting_is_named_after_the_employer():
+    """A new-grad role has no term; heading it "Summer 2027" is just wrong."""
+    from delivery.email import subject
+
+    line = subject([_item("Stripe", "Software Engineer, New Grad", [])], NOW)
+    assert line.startswith("Stripe — 1 match at 1 company")
+    assert "Summer 2027" not in line
+
+
+def test_mixed_terms_fall_back_to_the_configured_filter():
+    from delivery.email import subject
+
+    line = subject([_item("Citadel", "SWE Intern", ["Summer 2027"]),
+                    _item("Ramp", "Co-op", ["Fall 2027"])], NOW)
+    assert line.startswith("Summer 2027 — 2 matches")
+
+
+def test_a_posting_with_its_own_term_uses_that_term():
+    from delivery.email import subject
+
+    line = subject([_item("Ramp", "Software Co-op", ["Fall 2027"])], NOW)
+    assert line.startswith("Fall 2027 — 1 match at 1 company")
+
+
+def test_an_empty_digest_still_names_the_filter():
+    from delivery.email import subject
+
+    assert subject([], NOW).startswith("Summer 2027 — nothing new")
