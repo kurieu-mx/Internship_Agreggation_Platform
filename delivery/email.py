@@ -42,7 +42,11 @@ class DigestItem:
 
 def _hours_ago(job: Job, now: datetime) -> str:
     if job.posted_at is None:
-        return "date unknown"
+        # Search and LinkedIn results carry no publication date, so these
+        # qualify on first sighting rather than on age - which means one can
+        # be genuinely old and still appear here the day we first see it.
+        # Saying so is the difference between a surprise and a caveat.
+        return "no date published, new to this digest"
     posted = job.posted_at if job.posted_at.tzinfo else job.posted_at.replace(tzinfo=timezone.utc)
     hours = (now - posted).total_seconds() / 3600
     if hours < 1:

@@ -365,3 +365,106 @@ def test_the_url_alone_still_works():
     from sources.websearch import _best_company
 
     assert _best_company("https://jobs.lever.co/matchgroup/x", "") == "Matchgroup"
+
+
+# -- recovering the employer from a LinkedIn URL ------------------------------
+#
+# The digest sent a posting labelled "LinkedIn" that was actually at PDT
+# Partners, with a cover letter researched about LinkedIn. _company_from_url
+# only understood Greenhouse/Lever/Ashby, so a LinkedIn link fell through to
+# the page title - "PDT Partners hiring ... | LinkedIn" - and the parser took
+# the site's own name as the employer.
+
+
+from sources.websearch import (_best_company, _company_from_linkedin_slug,
+                               _NOT_A_COMPANY)
+
+
+@pytest.mark.parametrize("path,expected", [
+    ("/jobs/view/summer-2027-software-engineering-intern-at-pdt-partners-4308123456",
+     "Pdt Partners"),
+    ("/jobs/view/summer-2026-machine-learning-ai-intern-at-amd-4350698781", "Amd"),
+    ("/jobs/view/machine-learning-intern-co-op-fall-2026-at-cohere-4414190535", "Cohere"),
+])
+def test_the_employer_comes_out_of_the_linkedin_slug(path, expected):
+    assert _company_from_linkedin_slug(path) == expected
+
+
+def test_the_last_at_wins():
+    """A role named "... at Scale" inside a posting elsewhere must not win."""
+    assert _company_from_linkedin_slug(
+        "/jobs/view/software-engineer-intern-at-scale-at-openai-4400000000") == "Openai"
+
+
+@pytest.mark.parametrize("path", [
+    "/jobs/search?keywords=intern",          # a search page, not a posting
+    "/jobs/view/software-engineer-intern",   # no -at- segment
+    "/jobs/view/intern-at--4400000000",      # empty company
+    "",
+])
+def test_an_unusable_linkedin_path_yields_nothing(path):
+    assert _company_from_linkedin_slug(path) == ""
+
+
+def test_the_page_title_supplies_the_capitalisation():
+    """A URL slug has no case, and "Pdt Partners" on a letterhead is wrong."""
+    assert _best_company(
+        "https://www.linkedin.com/jobs/view/summer-2027-software-engineering-intern"
+        "-at-pdt-partners-4308123456",
+        "PDT Partners hiring Summer 2027 Software Engineering Intern | LinkedIn",
+    ) == "PDT Partners"
+
+
+def test_an_acronym_survives():
+    assert _best_company(
+        "https://tw.linkedin.com/jobs/view/summer-2026-ml-intern-at-amd-4350698781",
+        "AMD hiring Summer 2026 Machine Learning / AI Intern | LinkedIn",
+    ) == "AMD"
+
+
+def test_the_url_still_decides_which_company_it_is():
+    """Only the casing comes from the title; identity stays with the URL."""
+    assert _best_company(
+        "https://www.linkedin.com/jobs/view/intern-at-cohere-4414190535",
+        "Some Unrelated Company hiring an intern | LinkedIn",
+    ) == "Cohere"
+
+
+def test_the_job_board_itself_is_never_an_employer():
+    """The exact bug: "LinkedIn" was shipped as the company on a real digest."""
+    for site in ("linkedin", "indeed", "glassdoor", "ziprecruiter", "builtin"):
+        assert site in _NOT_A_COMPANY
+
+
+def test_a_greenhouse_url_is_unaffected():
+    assert _best_company("https://job-boards.greenhouse.io/quantbot/jobs/4340833009",
+                         "Quantbot Technologies") == "Quantbot"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    # LinkedIn titles its pages "<Company> hiring <role>", which put the
+    # employer inside the role, the email, and the PDF filename.
+    ("Roblox hiring [Summer 2027] Software Engineer Intern",
+     "[Summer 2027] Software Engineer Intern"),
+    ("PDT Partners hiring Summer 2027 Software Engineering Intern | LinkedIn",
+     "Summer 2027 Software Engineering Intern"),
+    ("Salesforce hiring Summer 2027 Intern", "Summer 2027 Intern"),
+    # and titles that never had the prefix are untouched
+    ("Software Engineer Intern - Summer 2027", "Software Engineer Intern"),
+])
+def test_the_hiring_prefix_is_stripped_from_titles(raw, expected):
+    from sources.websearch import _clean_title
+
+    assert _clean_title(raw) == expected
+
+
+def test_an_undated_posting_says_why_it_is_here():
+    """A 5-day-old LinkedIn result in a 24h digest needs explaining."""
+    from datetime import datetime, timezone
+
+    from delivery.email import _hours_ago
+    from models import Job
+
+    job = Job(company="PDT Partners", title="Software Engineering Intern",
+              locations=["New York, NY"], field_category="Software Engineering")
+    assert "new to this digest" in _hours_ago(job, datetime.now(timezone.utc))

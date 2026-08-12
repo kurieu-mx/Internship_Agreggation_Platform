@@ -71,13 +71,71 @@ _APPLICATION_PREFIX_RE = re.compile(
     r"^\s*(?:job\s+application\s+for|application\s+for|apply\s+(?:for|to))\s+", re.I
 )
 
+# LinkedIn titles its own pages "<Company> hiring <role> in <city>". Left in
+# place the company ends up inside the role, which then reaches the email and
+# the PDF filename: "Roblox hiring [Summer 2027] Software Engineer Intern".
+_HIRING_PREFIX_RE = re.compile(r"^\s*.{2,40}?\s+hiring\s+", re.I)
+
 # Path segments that are part of an ATS's own URL structure, not a company.
 _NOT_A_COMPANY = {
     "job app", "job apps", "job boards", "jobs", "embed", "boards",
     "careers", "career", "apply", "postings", "job", "search", "en",
+    # Job boards name themselves in their own page titles - "PDT Partners
+    # hiring Summer 2027 Software Engineering Intern | LinkedIn" - and the
+    # title parser happily took the site as the employer. That shipped a
+    # cover letter researched about LinkedIn for a job at PDT Partners.
+    "linkedin", "indeed", "glassdoor", "ziprecruiter", "simplyhired",
+    "monster", "builtin", "built in", "wellfound", "angellist", "dice",
+    "lensa", "jobright", "handshake", "joinhandshake", "simplify",
+    "greenhouse", "lever", "ashby", "workday", "myworkdayjobs",
 }
 
+# LinkedIn encodes the employer in its own URL: the job slug ends
+# "...-at-<company>-<numeric id>". That is more reliable than the page title,
+# which is where the wrong-company bug came from.
+_LINKEDIN_SLUG_RE = re.compile(r"/jobs/view/(?P<slug>[^/?#]+)")
+_TRAILING_ID_RE = re.compile(r"-\d{4,}$")
+
 _YEAR_IN_TITLE_RE = re.compile(r"\b(20\d{2})\b")
+
+
+def _company_from_linkedin_slug(path: str) -> str:
+    """The employer out of a LinkedIn job URL.
+
+    LinkedIn writes ``/jobs/view/<role words>-at-<company>-<numeric id>``, so
+    the employer is the segment after the *last* ``-at-`` once the trailing id
+    is removed::
+
+        /jobs/view/summer-2027-software-engineering-intern-at-pdt-partners-4308
+            -> "Pdt Partners"
+
+    Splitting on the last occurrence matters: a role called "Software Engineer
+    Intern at Scale" inside a posting at another company would otherwise hand
+    back the wrong half.
+
+    This also rescues the postings that used to be discarded as title
+    fragments. "quantitative-research-internship-phd-summer-2027-at-susquehanna"
+    previously parsed to a company of "PhD: Summer 2027" and was dropped; it
+    now resolves to Susquehanna, with the degree requirement still readable in
+    the title where the undergraduate filter can see it.
+    """
+    match = _LINKEDIN_SLUG_RE.search(path or "")
+    if not match:
+        return ""
+
+    slug = _TRAILING_ID_RE.sub("", match.group("slug"))
+    if "-at-" not in slug:
+        return ""
+
+    tail = slug.rsplit("-at-", 1)[1].strip("-")
+    if not tail:
+        return ""
+
+    name = re.sub(r"[-_]+", " ", tail).strip()
+    # A slug that is only digits, or absurdly long, is not a company name.
+    if not name or name.isdigit() or len(name) > 40:
+        return ""
+    return name.title()
 
 
 def _company_from_url(url: str) -> str:
@@ -93,6 +151,12 @@ def _company_from_url(url: str) -> str:
         return ""
 
     host = (parsed.hostname or "").lower()
+
+    # LinkedIn first: it is the source that most often has no other usable
+    # signal, and its slug is unambiguous.
+    if "linkedin.com" in host:
+        return _company_from_linkedin_slug(parsed.path or "")
+
     if not any(marker in host for marker in
                ("greenhouse.io", "lever.co", "ashbyhq.com")):
         return ""
@@ -143,18 +207,40 @@ def _best_company(url: str, raw_title: str) -> str:
         squash = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())  # noqa: E731
         if squash(from_url) == squash(from_title):
             return from_title       # same company, better spelling
-        return from_url             # they disagree - trust the URL
+        return _recase_from_title(from_url, raw_title)   # disagree - trust URL
 
-    return from_url or from_title
+    return _recase_from_title(from_url, raw_title) if from_url else from_title
+
+
+def _recase_from_title(name: str, raw_title: str) -> str:
+    """Adopt the page title's capitalisation of a name derived from a URL.
+
+    A URL slug carries no case, so ``pdt-partners`` title-cases to "Pdt
+    Partners" and ``amd`` to "Amd". That is tolerable in a log and wrong at
+    16pt on a cover letter's letterhead, where the employer's own name is the
+    first thing a reader checks.
+
+    The page title almost always spells it correctly, so the name is looked up
+    there and the title's version adopted when found. Only casing changes -
+    the URL still decides *which* company this is.
+    """
+    if not name or not raw_title:
+        return name
+
+    pattern = r"\b" + r"[\s\-]+".join(re.escape(w) for w in name.split()) + r"\b"
+    match = re.search(pattern, raw_title, re.I)
+    return match.group(0) if match else name
 
 
 def _clean_title(title: str) -> str:
     """Keep the fragment of a page title that is actually the role."""
     for part in _TITLE_SPLIT_RE.split(title):
         part = _APPLICATION_PREFIX_RE.sub("", part).strip()
+        part = _HIRING_PREFIX_RE.sub("", part).strip()
         if looks_like_internship(part):
             return part
-    return _APPLICATION_PREFIX_RE.sub("", title).strip()
+    cleaned = _APPLICATION_PREFIX_RE.sub("", title).strip()
+    return _HIRING_PREFIX_RE.sub("", cleaned).strip()
 
 
 def title_names_another_year(title: str, target_year: str) -> bool:
