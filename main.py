@@ -102,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--apply-url", metavar="URL",
         help="tailor and email one posting by link, for employers no source "
              "reaches (IBM, Amazon, Google, Apple, Meta, Microsoft)")
+    parser.add_argument(
+        "--description-file", metavar="PATH",
+        help="with --apply-url: read the posting text from this file instead "
+             "of fetching it, for pages behind a login and postings that "
+             "arrived by email. The URL is still used as the apply link.")
     parser.add_argument("--cover-preview", metavar="COMPANY",
                         help="build one cover letter from a stored posting, for "
                              "iterating on the design without a full run")
@@ -280,7 +285,8 @@ def main(argv=None) -> int:
         import apply_url
 
         return apply_url.run(args.apply_url, dry_run=args.dry_run,
-                             to=args.to, skip_cover=args.skip_cover)
+                             to=args.to, skip_cover=args.skip_cover,
+                             description_file=args.description_file)
 
     if args.cover_preview:
         import cover_preview

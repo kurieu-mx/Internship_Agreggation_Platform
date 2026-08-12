@@ -60,9 +60,10 @@ app = FastAPI(title="Internship application dashboard")
 class Submission:
     """One pasted URL and whatever became of it."""
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, description: str = ""):
         self.id = uuid.uuid4().hex[:12]
         self.url = url
+        self.description = description
         self.state = "running"          # running | done | failed
         self.error: Optional[str] = None
         self.prepared: Optional[apply_url.Prepared] = None
@@ -103,7 +104,8 @@ def _process(submission_id: str) -> None:
     out_dir = ROOT / "out" / datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     try:
-        prepared = apply_url.prepare(submission.url, out_dir)
+        prepared = apply_url.prepare(submission.url, out_dir,
+                                     description=submission.description)
     except Exception as exc:
         log.exception("submission %s failed", submission_id)
         submission.error = f"{type(exc).__name__}: {exc}"
@@ -111,8 +113,14 @@ def _process(submission_id: str) -> None:
         return
 
     if prepared is None:
-        submission.error = ("That page could not be read. It may be behind a "
-                            "login, or it may not be a job posting.")
+        # Two different failures, and the fix differs. An unreadable page is
+        # recoverable by pasting the text; unreadable pasted text is not.
+        submission.error = (
+            "That text could not be read as a job posting."
+            if submission.description else
+            "That page could not be read — it may be behind a login. "
+            "Paste the description below and submit it with the same URL."
+        )
         submission.state = "failed"
         return
 
@@ -260,11 +268,14 @@ def index() -> HTMLResponse:
 
 
 @app.post("/apply")
-def apply(background: BackgroundTasks, url: str = Form(...)) -> RedirectResponse:
+def apply(background: BackgroundTasks, url: str = Form(...),
+          description: str = Form("")) -> RedirectResponse:
     url = url.strip()
-    submission = Submission(url)
+    submission = Submission(url, description.strip())
 
     if not urlparse(url).scheme.startswith("http"):
+        # Still required even when the text is pasted: it is the apply link in
+        # the email and on the card, and the branding lookup keys off its host.
         submission.error = "That does not look like a URL."
         submission.state = "failed"
         _record(submission)

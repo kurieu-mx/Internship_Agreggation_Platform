@@ -110,7 +110,71 @@ def build_steps(profile_text: str, posting: str, research_page: str,
             output_tokens=750,          # sectioned letter: measured ~700-800
             model=config.MODEL_TAILORING,
         ),
+        Step(
+            # The most expensive call per posting, and the one this model was
+            # missing entirely: it sends the whole draft letter *and* returns a
+            # whole letter, so it pays full freight on both sides where the
+            # other steps send a posting and return a fragment.
+            #
+            # Counted at every posting rather than some fraction of them
+            # because that is what happens in practice - measured across live
+            # runs, essentially every first draft breaks at least one voice
+            # rule, usually the three-item-list cap.
+            "voice revision", top_n,
+            prompt=(
+                "Rewrite this draft to fix the listed problems, changing nothing "
+                "else: same facts, same structure, same claims.\n\n"
+                "PROBLEMS TO FIX:\n  1. Remove all 4 em dashes.\n"
+                "  2. There are 5 three-item lists. Keep at most one.\n"
+                "  3. Sentences average 25 words. Bring the average under 24.\n\n"
+                "DRAFT:\n" + _sample_letter()
+            ),
+            cached_prompt=profile_text,
+            output_tokens=800,
+            model=config.MODEL_VOICE,
+        ),
     ]
+
+
+def _sample_letter() -> str:
+    """A rendered letter, as JSON, standing in for the draft sent to revision."""
+    import json
+
+    return json.dumps({
+        "hook": "I spent last summer building an automated bookkeeping platform "
+                "in Python on Google Cloud, where an LLM stage handled the cases "
+                "deterministic rules could not.",
+        "why_company": "They embed AI into core systems rather than shipping it "
+                       "as a separate product, and scale those solutions across "
+                       "hybrid cloud. That constraint changes how you write code, "
+                       "because a model output landing in a client ledger has to "
+                       "be checked rather than trusted.",
+        "what_i_bring": [
+            {"title": "Backend services across languages",
+             "detail": "Production code in Python, Go, C++ and TypeScript: a Go "
+                       "collision-avoidance service for drone swarms, Python data "
+                       "pipelines on GCP, and Next.js operator tooling."},
+            {"title": "AI in production workflows",
+             "detail": "Automated client onboarding by deriving bookkeeping rules "
+                       "from historical ledgers with validation pipelines. The "
+                       "platform went from 3 customers to at least 10."},
+            {"title": "Debugging distributed systems",
+             "detail": "Diagnosed leader-election duel loops, flight-session state "
+                       "machine races and command-acknowledgment retry timeouts "
+                       "across an 8-drone fleet."},
+        ],
+        "selected_work": [
+            {"ref": "embeddinglabs", "name": "embeddingLABS",
+             "detail": "Derived bookkeeping rules from historical ledgers with "
+                       "LLM-assisted fallback and validation pipelines."},
+            {"ref": "merlin", "name": "Merlin Drones",
+             "detail": "Designed a Go collision-avoidance system integrating ROS 2, "
+                       "PX4, ORCA and LiDAR, scaling to 8 active drones."},
+        ],
+        "closing": "I write Python and Go day to day and have shipped C++ and "
+                   "TypeScript, so I am comfortable being handed whichever one a "
+                   "team already uses.",
+    })
 
 
 def price(steps: List[Step], overrides: Optional[Dict[str, str]] = None) -> Dict[str, float]:

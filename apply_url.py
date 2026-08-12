@@ -158,6 +158,42 @@ def _parse_date(value: str) -> Optional[datetime]:
     return None
 
 
+def _terms_for(result: dict, title: str, description: str) -> List[str]:
+    """Which academic term this posting is for, or nothing if we cannot tell.
+
+    Three things were wrong with reading it straight off ``infer_terms``.
+
+    It returns ``(terms, inferred)``, and assigning that tuple to ``Job.terms``
+    produced ``(['Summer 2027'], True)`` - a list and a bool where a list of
+    strings belongs. Every consumer joins that field, so a posting whose page
+    stated no term crashed the CLI, the store row, the dashboard card and the
+    cover-letter header. The collected sources unpack it correctly; this path
+    and Workday did not.
+
+    Its fallback is also specific to internships: absent any year, it assumes a
+    posting published in the second half of the year recruits for the following
+    summer, which its own docstring scopes to US tech internships. That
+    reasoning does not hold for a new-grad or full-time role, so an inferred
+    term is kept only when the title actually reads as an internship.
+
+    And the guess is worse here than in the digest. A collected posting that
+    guesses wrong is one row in a ranking; a hand-added one has its term
+    printed in the cover letter header, so guessing "Summer 2027" onto a
+    new-grad application puts a fabricated detail in front of a recruiter.
+    Saying nothing is the honest failure.
+    """
+    from sources.ats import infer_terms, looks_like_internship
+
+    stated = (result.get("term") or "").strip()
+    if stated:
+        return [stated]
+
+    terms, inferred = infer_terms(title, description)
+    if inferred and not looks_like_internship(title):
+        return []
+    return list(terms)
+
+
 def extract(url: str, text: str) -> Optional[Job]:
     """One model call, turning fetched text into a Job."""
     import llm
@@ -191,8 +227,6 @@ def extract(url: str, text: str) -> Optional[Job]:
     locations = [str(x) for x in (result.get("locations") or []) if str(x).strip()]
     us_locations = filter_us_locations(locations) or locations
 
-    term = (result.get("term") or "").strip()
-
     return Job(
         company=company,
         title=title,
@@ -200,7 +234,7 @@ def extract(url: str, text: str) -> Optional[Job]:
         url=url,
         description=description,
         field_category=categorize_title(title),
-        terms=[term] if term else infer_terms(title, description),
+        terms=_terms_for(result, title, description),
         work_mode=infer_work_mode(us_locations),
         posted_at=_parse_date(result.get("posted_date") or ""),
         external_id=(urlparse(url).query or "")[:60],
@@ -259,10 +293,20 @@ class Prepared:
         self.gates: List[Tuple[str, str]] = []
         self.brief = None
         self.cost = 0.0
+        self.pasted = False
 
 
-def prepare(url: str, out_dir: Path, skip_cover: bool = False) -> Optional[Prepared]:
+def prepare(url: str, out_dir: Path, skip_cover: bool = False,
+            description: str = "") -> Optional[Prepared]:
     """Fetch, read, score and tailor one posting. Returns None if unreadable.
+
+    ``description`` is the posting's text, pasted rather than fetched. The
+    fetchers handle most of the public web, but the postings this tool exists
+    for are disproportionately the ones they cannot reach: portals behind a
+    login, applications that arrived by email, a PDF a recruiter sent. Without
+    somewhere to paste, those are exactly the applications you cannot build,
+    which is the wrong way round. When it is supplied the fetch is skipped
+    entirely - no request is made, so a dead or gated link costs nothing.
 
     No delivery and no store writes - those belong to the caller, because
     "produced a letter" and "sent it" are different outcomes and only the
@@ -275,7 +319,11 @@ def prepare(url: str, out_dir: Path, skip_cover: bool = False) -> Optional[Prepa
     from tailor.resume import tailored_resume
     from tailor.score import rerank
 
-    text = fetch_posting(url)
+    text = description.strip()
+    if text:
+        log.info("using %d pasted characters, skipping the fetch", len(text))
+    else:
+        text = fetch_posting(url)
     if not text:
         log.error("could not read that page by any route")
         return None
@@ -285,6 +333,7 @@ def prepare(url: str, out_dir: Path, skip_cover: bool = False) -> Optional[Prepa
         return None
 
     prepared = Prepared(job)
+    prepared.pasted = bool(description.strip())
     prepared.gates = check_gates(job)
 
     profile = load_profile()
@@ -315,7 +364,7 @@ def prepare(url: str, out_dir: Path, skip_cover: bool = False) -> Optional[Prepa
 
 
 def run(url: str, dry_run: bool = False, to: Optional[str] = None,
-        skip_cover: bool = False) -> int:
+        skip_cover: bool = False, description_file: Optional[str] = None) -> int:
     """Fetch, tailor, and send one posting. Returns a process exit code."""
     import store
     from delivery.email import DigestItem, send
@@ -324,10 +373,22 @@ def run(url: str, dry_run: bool = False, to: Optional[str] = None,
         log.error("that does not look like a URL: %s", url)
         return 2
 
+    description = ""
+    if description_file:
+        try:
+            description = Path(description_file).read_text()
+        except OSError as exc:
+            log.error("could not read %s: %s", description_file, exc)
+            return 2
+        if not description.strip():
+            log.error("%s is empty", description_file)
+            return 2
+
     now = datetime.now(timezone.utc)
     out_dir = ROOT / "out" / now.strftime("%Y-%m-%d")
 
-    prepared = prepare(url, out_dir, skip_cover=skip_cover)
+    prepared = prepare(url, out_dir, skip_cover=skip_cover,
+                       description=description)
     if prepared is None:
         return 1
 

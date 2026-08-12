@@ -296,6 +296,7 @@ class WorkdaySource:
             locations = ["United States"]
 
         description = strip_html(info.get("jobDescription") or "")
+        terms, _inferred = infer_terms(title, description)
         url = (info.get("externalUrl") or "").strip() or (
             f"https://{board.tenant}.{board.host}.myworkdayjobs.com"
             f"/{board.site}{listing.get('externalPath', '')}"
@@ -308,7 +309,11 @@ class WorkdaySource:
             url=url,
             description=description,
             field_category=categorize_title(title),
-            terms=infer_terms(title, description),
+            # Unpacked, not assigned whole: infer_terms returns
+            # (terms, inferred), and the tuple form put a list and a bool where
+            # a list of strings belongs - which every consumer then tries to
+            # join. Greenhouse, Lever and Ashby already unpack it.
+            terms=terms,
             work_mode=infer_work_mode(locations),
             posted_at=_parse_start_date(info.get("startDate")),
             external_id=str(info.get("jobReqId") or info.get("id") or "").strip(),
