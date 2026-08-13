@@ -166,6 +166,15 @@ def send(items: List[DigestItem], also: List[Job],
     """Send the digest. Returns True only if something actually went out."""
     now = now or datetime.now(timezone.utc)
     to = to or config.DIGEST_TO
+
+    # Checked before anything is rendered or sent. The attachments are a
+    # resume and a cover letter carrying a real name, phone number and work
+    # history, so "no recipient configured" has to stop the send rather than
+    # pick one - there is no safe address to guess.
+    if not to or "@" not in to:
+        log.error("no digest recipient configured - set DIGEST_TO in .env")
+        return False
+
     body = build_body(items, also, now)
     line = subject(items, now)
     files = _attachments(items)

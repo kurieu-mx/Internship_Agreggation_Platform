@@ -120,5 +120,12 @@ def test_a_blank_timezone_does_not_become_utc(env):
     assert env(DIGEST_TIMEZONE="").DIGEST_TIMEZONE == "America/Chicago"
 
 
-def test_a_blank_recipient_falls_back_to_a_real_address(env):
-    assert "@" in env(DIGEST_TO="").DIGEST_TO
+def test_a_blank_recipient_stays_blank(env):
+    """There is no safe address to fall back to.
+
+    This used to default to the author's, which is harmless in the original
+    repo and a data leak in a fork: an owner who sets every other credential
+    but forgets this one mails their own resume - name, phone, work history -
+    to a stranger, with the run reporting success.
+    """
+    assert env(DIGEST_TO="").DIGEST_TO == ""

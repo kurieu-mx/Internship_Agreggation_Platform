@@ -349,3 +349,34 @@ def test_an_empty_digest_still_names_the_filter():
     from delivery.email import subject
 
     assert subject([], NOW).startswith("Summer 2027 — nothing new")
+
+
+def test_a_missing_recipient_stops_the_send(monkeypatch, tmp_path):
+    """Attachments carry a real name and phone number - never guess a mailbox."""
+    import config
+    from delivery.email import send
+
+    monkeypatch.setattr(config, "DIGEST_TO", "")
+
+    def explode(*a, **kw):
+        raise AssertionError("nothing may be sent without a recipient")
+
+    monkeypatch.setattr("delivery.email.execute", explode)
+    monkeypatch.setattr("delivery.email.available", lambda: True)
+
+    assert send([_item("Stripe", "SWE", [])], [], now=NOW) is False
+
+
+def test_an_explicit_recipient_still_works(monkeypatch):
+    """The guard must not break the --to override."""
+    import config
+    from delivery.email import send
+
+    monkeypatch.setattr(config, "DIGEST_TO", "")
+    sent = {}
+    monkeypatch.setattr("delivery.email.available", lambda: True)
+    monkeypatch.setattr("delivery.email.execute",
+                        lambda slug, payload: sent.update(payload) or {"successful": True})
+
+    send([_item("Stripe", "SWE", [])], [], to="someone@example.com", now=NOW)
+    assert sent.get("recipient_email") == "someone@example.com"

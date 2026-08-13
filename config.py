@@ -289,7 +289,13 @@ HANDSHAKE_COOKIE = _env("HANDSHAKE_COOKIE", "")
 HANDSHAKE_HOST = _env("HANDSHAKE_HOST", "umich.joinhandshake.com")
 
 # --- Delivery ---------------------------------------------------------------
-DIGEST_TO = _env("DIGEST_TO", "kurieu@umich.edu")
+# No default, deliberately. This used to fall back to the author's address,
+# which is fine until someone forks the repo: a fork that sets every other
+# credential but forgets this one mails its owner's tailored resume - name,
+# phone, address, work history - to a stranger, and the run reports success.
+# The doctor passed it too, because the address it was checking was a valid
+# one. Empty is the honest default; the doctor and the sender both refuse.
+DIGEST_TO = _env("DIGEST_TO", "")
 DIGEST_TIMEZONE = _env("DIGEST_TIMEZONE", "America/Chicago")
 
 # --- HTTP ------------------------------------------------------------------
