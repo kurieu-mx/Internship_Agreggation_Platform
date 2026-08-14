@@ -13,12 +13,13 @@
 # the digest - worth setting when the token reads badly.
 
 greenhouse:
+  - {token: mercury, name: Mercury}   # on Greenhouse, not Ashby
   # --- quant / trading ---
   - {token: janestreet, name: Jane Street}
   - {token: jumptrading, name: Jump Trading}
   - {token: imc, name: IMC Trading}
   - {token: point72, name: Point72}
-  - {token: optiver, name: Optiver}
+  - {token: optiverus, name: Optiver}   # not `optiver`: that board resolves and is empty
   # --- AI / ML ---
   - {token: anthropic, name: Anthropic}
   - {token: scaleai, name: Scale AI}
@@ -71,11 +72,11 @@ lever:
   - {token: palantir, name: Palantir}
   - {token: shieldai, name: Shield AI}
   - {token: matchgroup, name: Match Group}
-  - {token: plaid, name: Plaid}
   - {token: kraken, name: Kraken}
   - {token: mistral, name: Mistral AI}
 
 ashby:
+  - {token: plaid, name: Plaid}       # on Ashby, not Lever
   # --- AI labs and AI infrastructure ---
   - {token: openai, name: OpenAI}
   - {token: perplexity, name: Perplexity}
@@ -105,7 +106,6 @@ ashby:
   - {token: linear, name: Linear}
   - {token: replit, name: Replit}
   - {token: deel, name: Deel}
-  - {token: mercury, name: Mercury}
 
 # Workday - what large enterprises run their careers site on. The three ATS
 # platforms above skew startup and mid-size; without this block the digest was

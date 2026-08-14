@@ -203,6 +203,19 @@ def emit(jobs: List[Job], args) -> None:
         writer(jobs, sys.stdout)
 
 
+def _board_job_count(kind: str, payload) -> int:
+    """How many jobs a board lists in total, before any filtering.
+
+    Each ATS wraps its list differently: Greenhouse and Ashby nest it under
+    ``jobs``, Lever returns a bare array.
+    """
+    if isinstance(payload, list):
+        return len(payload)
+    if isinstance(payload, dict):
+        return len(payload.get("jobs") or [])
+    return 0
+
+
 def check_boards() -> int:
     """Verify every token in companies.yml still resolves.
 
@@ -222,6 +235,7 @@ def check_boards() -> int:
     }
 
     dead = 0
+    empty = 0
     for kind, factory in sources.items():
         boards = load_boards(kind)
         source = factory(boards=[])
@@ -229,13 +243,33 @@ def check_boards() -> int:
         for board in boards:
             try:
                 payload = source.fetch_json(source.board_url(board))
-                found = source.parse_board(board, payload)
-                print(f"  ok    {board.token:28s} {len(found):3d} matching postings")
             except Exception as exc:
                 dead += 1
                 print(f"  DEAD  {board.token:28s} {type(exc).__name__}: {exc}")
+                continue
 
-    print(f"\n{dead} unreachable board(s).")
+            # A board carrying no jobs at all is almost always a wrong token
+            # rather than a company with nothing open, and it is the failure
+            # this check used to miss entirely: it answers 200 with an empty
+            # list, so "reachable" was true and the report said nothing.
+            # Found live - `optiver` was empty while `optiverus` had 174
+            # postings, and Plaid and Mercury were each listed under an ATS
+            # they had left. Between them, 336 postings nobody was reading.
+            total = _board_job_count(kind, payload)
+            found = source.parse_board(board, payload)
+
+            if total == 0:
+                empty += 1
+                print(f"  EMPTY {board.token:28s} resolves, but lists no jobs "
+                      f"at all - check the token")
+            else:
+                print(f"  ok    {board.token:28s} {len(found):3d} matching "
+                      f"of {total:4d} open")
+
+    print(f"\n{dead} unreachable board(s), {empty} empty board(s).")
+    if empty:
+        print("An empty board is usually a token that moved. Search the "
+              "company's careers page for its current ATS.")
     return 1 if dead else 0
 
 
