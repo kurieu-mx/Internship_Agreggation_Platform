@@ -52,6 +52,12 @@ def _workday() -> Source:
     return WorkdaySource()
 
 
+def _amazon() -> Source:
+    from sources.amazon import AmazonSource
+
+    return AmazonSource()
+
+
 def _websearch() -> Source:
     from sources.websearch import WebSearchSource
 
@@ -77,6 +83,7 @@ REGISTRY: Dict[str, Callable[[], Source]] = {
     "lever": _lever,
     "ashby": _ashby,
     "workday": _workday,
+    "amazon": _amazon,
     "websearch": _websearch,
     "linkedin": _linkedin,
     "handshake": _handshake,

@@ -6,7 +6,7 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-Applying to internships is a search problem wearing a writing problem as a hat. The postings worth applying to are scattered across eight places, most of them are stale by the time you see them, and the ones that matter reward applying within a day. Then each one needs a resume that emphasises the right half of your experience and a cover letter that proves you read the posting.
+Applying to internships is a search problem wearing a writing problem as a hat. The postings worth applying to are scattered across nine places, most of them are stale by the time you see them, and the ones that matter reward applying within a day. Then each one needs a resume that emphasises the right half of your experience and a cover letter that proves you read the posting.
 
 This does all of it at 3pm, every day. The log below is a real run, taken from the ledger rather than an estimate:
 
@@ -124,7 +124,7 @@ Two ways in, one pipeline. The scheduled digest sweeps eight sources; a pasted l
 
 ```mermaid
 flowchart LR
-    A[8 sources] --> B[de-duplicate<br/>by authority]
+    A[9 sources] --> B[de-duplicate<br/>by authority]
     B --> C[internship gate]
     C --> D[work authorisation]
     D --> E[24h window]
@@ -144,7 +144,7 @@ The two entry points share `apply_url.prepare`, so a posting added by hand gets 
 
 | Module | Responsibility |
 |---|---|
-| `sources/` | Eight adapters behind one protocol — Greenhouse, Lever, Ashby, **Workday**, two community feeds, web search, LinkedIn |
+| `sources/` | Nine adapters behind one protocol — Greenhouse, Lever, Ashby, Workday, **Amazon**, two community feeds, web search, LinkedIn |
 | `eligibility.py` | Internship, term, co-op, degree and work-authorisation gates |
 | `freshness.py` | The 24-hour window, and what to do about sources that publish no date |
 | `store.py` | SQLite: seen postings, sent digests, per-run cost |
@@ -232,7 +232,7 @@ $ make doctor
 | `make digest` | Build and send |
 | `python main.py --apply-url <url>` | Tailor and email one posting by link |
 | `make dashboard` | The same, in a browser, on the subscription rather than the API |
-| `make test` | 743 tests |
+| `make test` | 763 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.
 
@@ -349,7 +349,7 @@ Two things the backend does not change, and one it cannot:
 - **One posting per company per day** is a deliberate trade, not a limitation, but it does mean a company posting several genuinely different roles is under-represented. The overflow appears in the digest as links.
 - **The search-backed sources publish no location.** Measured: 43 of 43 results from web search and LinkedIn carried an empty location list, so the US filter has nothing to reject. LinkedIn's country subdomain (`ie.`, `fr.`, `in.`) is used as the country signal instead, which caught 10 of 14 on one run — but a non-LinkedIn result with no location is still kept, and could be anywhere.
 - **Company research depends on a fetchable marketing site.** Small firms with thin web presence yield nothing, and their letters are written about the role instead.
-- **Six large employers are unreachable by any source.** IBM, Amazon, Google, Apple, Meta and Microsoft each run their own careers portal instead of an ATS with a public API, and some are bot-protected — a plain request to IBM returns HTTP 202 with an empty body. Six bespoke adapters was judged not worth the maintenance, so those arrive by hand:
+- **Five large employers are unreachable by any source.** IBM, Google, Apple, Meta and Microsoft each run their own careers portal instead of an ATS with a public API, and some are bot-protected — a plain request to IBM returns HTTP 202 with an empty body. Six bespoke adapters was judged not worth the maintenance, so those arrive by hand:
 
 ```console
 $ python main.py --apply-url "https://careers.ibm.com/en_US/careers/JobDetail?jobId=128497"

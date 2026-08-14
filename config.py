@@ -149,9 +149,20 @@ SOURCES = [
     s.strip()
     for s in _env(
         "SOURCES",
-        "greenhouse,lever,ashby,workday,simplify,vansh,websearch,linkedin",
+        "greenhouse,lever,ashby,workday,amazon,simplify,vansh,websearch,linkedin",
     ).split(",")
     if s.strip()
+]
+
+# Amazon runs its own portal, not an ATS board, but publishes a plain JSON
+# search that robots.txt permits. Scoped narrowly on purpose: Amazon lists
+# thousands of roles, and a broad query would fill the digest with warehouse
+# and operations postings for the category filter to throw away again.
+# Comma-separated; widen when you want more of their catalogue.
+AMAZON_QUERIES = [
+    q.strip()
+    for q in _env("AMAZON_QUERIES", "automation engineer intern").split(",")
+    if q.strip()
 ]
 
 # Board tokens for the direct-ATS adapters.

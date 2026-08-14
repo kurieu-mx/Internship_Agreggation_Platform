@@ -479,3 +479,25 @@ def test_the_term_gate_reads_the_title_when_no_term_is_published():
     """ATS sources publish no term field; the season is in the title."""
     assert names_a_different_term(_termed("Winter 2027 Software Intern", []),
                                   "Summer 2027")
+
+
+def test_the_title_overrides_a_contradicting_feed_term():
+    """The community feed tagged "Engineer Intern - Spring 2027" as Summer 2027.
+
+    Reading terms and title as one string found "summer" first and kept a
+    spring posting. The title is the employer's own words; a feed term is a
+    contributor's tag.
+    """
+    job = _termed("Engineer Intern - Spring 2027", ["Summer 2027"])
+    assert names_a_different_term(job, "Summer 2027")
+
+
+def test_a_posting_offering_several_terms_qualifies_on_any_of_them():
+    """"Summer 2027, Fall 2027" is offering both, so it is a Summer posting."""
+    job = _termed("DERMS Intern", ["Summer 2027", "Fall 2027"])
+    assert not names_a_different_term(job, "Summer 2027")
+
+
+def test_several_terms_that_all_conflict_are_dropped():
+    job = _termed("DERMS Intern", ["Fall 2027", "Winter 2027"])
+    assert names_a_different_term(job, "Summer 2027")

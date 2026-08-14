@@ -346,16 +346,28 @@ def names_a_different_term(job: Job, target: str) -> bool:
     if not want_season and not want_year:
         return False
 
-    # The stated terms, plus the title, which is where a term is usually
-    # written even when the source publishes no term field.
-    stated = " ".join(job.terms or []) + " " + (job.title or "")
-    got_season, got_year = _season_and_year(stated)
+    def conflicts(season, year) -> bool:
+        if want_year and year and year != want_year:
+            return True
+        return bool(want_season and season and season != want_season)
 
-    if want_year and got_year and got_year != want_year:
-        return True
-    if want_season and got_season and got_season != want_season:
-        return True
-    return False
+    # The title decides when it names a term. A feed's `terms` field is a
+    # contributor's tag; the title is the employer's own words, and when they
+    # disagree the title is right. This is not hypothetical: the community
+    # feed tagged "Engineer Intern - Spring 2027" as Summer 2027, and reading
+    # both together found "summer" first and kept a spring posting.
+    title_season, title_year = _season_and_year(job.title or "")
+    if title_season or title_year:
+        return conflicts(title_season, title_year)
+
+    # Otherwise the stated terms, each read on its own. A posting listing
+    # several terms - "Summer 2027, Fall 2027" - is offering all of them, so
+    # it qualifies if any one matches.
+    stated = [t for t in (job.terms or []) if t]
+    if not stated:
+        return False
+
+    return all(conflicts(*_season_and_year(term)) for term in stated)
 
 
 def only_target_term(jobs: Iterable[Job],
