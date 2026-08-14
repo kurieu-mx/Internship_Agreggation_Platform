@@ -145,7 +145,7 @@ The two entry points share `apply_url.prepare`, so a posting added by hand gets 
 | Module | Responsibility |
 |---|---|
 | `sources/` | Eight adapters behind one protocol — Greenhouse, Lever, Ashby, **Workday**, two community feeds, web search, LinkedIn |
-| `eligibility.py` | Internship gate, and work-authorisation filtering |
+| `eligibility.py` | Internship, term, co-op, degree and work-authorisation gates |
 | `freshness.py` | The 24-hour window, and what to do about sources that publish no date |
 | `store.py` | SQLite: seen postings, sent digests, per-run cost |
 | `tailor/score.py` | Deterministic prefilter, then one model call to rank |
@@ -232,7 +232,7 @@ $ make doctor
 | `make digest` | Build and send |
 | `python main.py --apply-url <url>` | Tailor and email one posting by link |
 | `make dashboard` | The same, in a browser, on the subscription rather than the API |
-| `make test` | 714 tests |
+| `make test` | 743 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.
 
@@ -347,6 +347,7 @@ Two things the backend does not change, and one it cannot:
 - **Web search and LinkedIn are the weakest legs.** Results are undated, unstructured, and rank below every other source. LinkedIn is reached through public web search — the site is never scraped — so coverage is whatever they choose to make publicly indexable.
 - **Handshake needs a browser cookie that expires.** Off by default. It is the only source that sees school-restricted postings, and the least durable thing here.
 - **One posting per company per day** is a deliberate trade, not a limitation, but it does mean a company posting several genuinely different roles is under-represented. The overflow appears in the digest as links.
+- **The search-backed sources publish no location.** Measured: 43 of 43 results from web search and LinkedIn carried an empty location list, so the US filter has nothing to reject. LinkedIn's country subdomain (`ie.`, `fr.`, `in.`) is used as the country signal instead, which caught 10 of 14 on one run — but a non-LinkedIn result with no location is still kept, and could be anywhere.
 - **Company research depends on a fetchable marketing site.** Small firms with thin web presence yield nothing, and their letters are written about the role instead.
 - **Six large employers are unreachable by any source.** IBM, Amazon, Google, Apple, Meta and Microsoft each run their own careers portal instead of an ATS with a public API, and some are bot-protected — a plain request to IBM returns HTTP 202 with an empty body. Six bespoke adapters was judged not worth the maintenance, so those arrive by hand:
 

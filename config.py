@@ -119,6 +119,13 @@ EXCLUDE_SPONSORSHIP = [
 # requirement - and so is silence, which is most of them.
 UNDERGRADUATE_ONLY = _env("UNDERGRADUATE_ONLY", "true").lower() != "false"
 
+# Drop co-op postings. A co-op is a full-time work term during the academic
+# year rather than a summer internship, so taking one means a semester out of
+# school - a different decision, and a materially different one on an F-1
+# visa. Titles naming both ("Intern/Co-op") are kept: those are internships
+# that also accept co-op students.
+EXCLUDE_COOPS = _env("EXCLUDE_COOPS", "true").lower() != "false"
+
 # Categories worth tailoring for. Matched against the normalised category.
 TARGET_CATEGORIES = [
     c.strip()

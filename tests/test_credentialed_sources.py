@@ -468,3 +468,38 @@ def test_an_undated_posting_says_why_it_is_here():
     job = Job(company="PDT Partners", title="Software Engineering Intern",
               locations=["New York, NY"], field_category="Software Engineering")
     assert "new to this digest" in _hours_ago(job, datetime.now(timezone.utc))
+
+
+# -- LinkedIn puts the country in the hostname -------------------------------
+#
+# Measured on one run: 10 of 14 LinkedIn results came from a country subdomain
+# - SpaceX France, Winnow Romania, Susquehanna Dublin and London, Salesforce
+# India - and every single one carried an empty location list, so the US
+# filter had nothing to reject. One reached the digest and was emailed with a
+# tailored resume and cover letter.
+
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://in.linkedin.com/jobs/view/x-at-y-123456", "in"),
+    ("https://ie.linkedin.com/jobs/view/x-at-y-123456", "ie"),
+    ("https://uk.linkedin.com/jobs/view/x-at-y-123456", "uk"),
+    ("https://fr.linkedin.com/jobs/view/x-at-y-123456", "fr"),
+    ("https://ca.linkedin.com/jobs/view/x-at-y-123456", "ca"),
+])
+def test_a_country_subdomain_is_detected(url, expected):
+    from sources.websearch import linkedin_country_subdomain
+
+    assert linkedin_country_subdomain(url) == expected
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.linkedin.com/jobs/view/x-at-y-123456",
+    "https://linkedin.com/jobs/view/x-at-y-123456",
+    "https://job-boards.greenhouse.io/quantbot/jobs/1",
+    "https://nvidia.wd5.myworkdayjobs.com/x/job/y",
+    "",
+])
+def test_a_us_or_non_linkedin_url_reports_no_country(url):
+    from sources.websearch import linkedin_country_subdomain
+
+    assert linkedin_country_subdomain(url) == ""

@@ -96,6 +96,30 @@ _NOT_A_COMPANY = {
 _LINKEDIN_SLUG_RE = re.compile(r"/jobs/view/(?P<slug>[^/?#]+)")
 _TRAILING_ID_RE = re.compile(r"-\d{4,}$")
 
+# LinkedIn serves each country from its own subdomain, and a posting's country
+# is therefore in its URL: in.linkedin.com is India, ie. is Ireland, fr. is
+# France. US postings come from www.
+#
+# This was being ignored entirely, and it mattered: measured on one run, 10 of
+# 14 LinkedIn results came from a country subdomain - SpaceX France, Winnow
+# Romania, Susquehanna Dublin and London, Salesforce India - and every one of
+# them carried no location field at all, so the US filter had nothing to
+# reject and passed them through. One reached the digest and was sent with a
+# tailored resume and cover letter.
+_LINKEDIN_US_SUBDOMAINS = {"www", "linkedin", "us"}
+
+
+def linkedin_country_subdomain(url: str) -> str:
+    """The country subdomain of a LinkedIn URL, or "" if it is US or not LinkedIn."""
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return ""
+    if not host.endswith("linkedin.com"):
+        return ""
+    label = host.split(".")[0]
+    return "" if label in _LINKEDIN_US_SUBDOMAINS else label
+
 _YEAR_IN_TITLE_RE = re.compile(r"\b(20\d{2})\b")
 
 
@@ -338,6 +362,17 @@ class WebSearchSource:
                 company = _best_company(url, raw_title)
                 if not company or company.lower() in _NOT_A_COMPANY:
                     dropped["no_company"] += 1
+                    continue
+
+                # LinkedIn puts the country in the hostname, and these results
+                # carry no location field to check instead - measured, every
+                # one of them. Without this the digest cannot tell a Dublin
+                # posting from a Philadelphia one.
+                country = linkedin_country_subdomain(url)
+                if country:
+                    dropped["non_us"] = dropped.get("non_us", 0) + 1
+                    log.debug("non-US linkedin posting (%s.): %s - %s",
+                              country, company, raw_title)
                     continue
 
                 locations = filter_us_locations(

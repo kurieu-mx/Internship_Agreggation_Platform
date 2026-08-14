@@ -394,3 +394,88 @@ def test_dropping_nothing_is_fine():
     good = Job(company="IBM", title="Software Developer Intern",
                locations=["Austin, TX"], field_category="Software Engineering")
     assert drop_malformed([good]) == [good]
+
+
+# -- co-ops, and terms that are not the one being searched for ---------------
+#
+# Both of these reached a real digest. "Machine Learning Intern/Co-op (Winter
+# 2027)" was sent under a Summer 2027 filter because the only term check
+# compared the *year* and nothing looked at the season. "Full Stack Developer
+# Co-op" was sent because the seasonal fallback assigned it Summer 2027 and
+# looks_like_internship accepts co-op as a match.
+
+
+from eligibility import (exclude_coops, is_coop_only, names_a_different_term,
+                         only_target_term)
+
+
+@pytest.mark.parametrize("title", [
+    "Full Stack Developer Co-op",
+    "Analog IC Design Co-op",
+    "Software Engineering Coop",
+])
+def test_a_coop_is_recognised(title):
+    assert is_coop_only(Job(company="X", title=title, locations=["NY"],
+                            field_category="Software Engineering"))
+
+
+@pytest.mark.parametrize("title", [
+    # Names both: an internship that also accepts co-op students.
+    "Machine Learning Intern/Co-op (Winter 2027)",
+    "Software Engineer Intern",
+    "Summer 2027 Internship",
+])
+def test_an_internship_is_not_a_coop(title):
+    assert not is_coop_only(Job(company="X", title=title, locations=["NY"],
+                                field_category="Software Engineering"))
+
+
+def test_coops_are_dropped_from_a_run():
+    keep = Job(company="A", title="Software Engineer Intern", locations=["NY"],
+               field_category="Software Engineering")
+    drop = Job(company="B", title="Full Stack Developer Co-op", locations=["NY"],
+               field_category="Software Engineering")
+    assert exclude_coops([keep, drop]) == [keep]
+
+
+def _termed(title, terms):
+    return Job(company="X", title=title, locations=["NY"],
+               field_category="Software Engineering", terms=terms)
+
+
+@pytest.mark.parametrize("title,terms", [
+    # The one that shipped: right year, wrong season.
+    ("Machine Learning Intern/Co-op (Winter 2027)", ["Winter 2027"]),
+    ("Fall 2027 Software Intern", ["Fall 2027"]),
+    ("Spring 2027 Intern", ["Spring 2027"]),
+    ("Summer 2026 Intern", ["Summer 2026"]),
+])
+def test_a_different_term_is_dropped(title, terms):
+    assert names_a_different_term(_termed(title, terms), "Summer 2027")
+
+
+@pytest.mark.parametrize("title,terms", [
+    ("Software Engineer Intern - Summer 2027", ["Summer 2027"]),
+    # Silence is kept, exactly as it is for sponsorship and degree: most ATS
+    # postings state no term, and dropping those discards the corpus.
+    ("Software Engineer Intern", []),
+    ("Quantitative Developer Intern", []),
+])
+def test_a_matching_or_unstated_term_is_kept(title, terms):
+    assert not names_a_different_term(_termed(title, terms), "Summer 2027")
+
+
+def test_autumn_and_fall_are_the_same_term():
+    assert not names_a_different_term(_termed("Autumn 2027 Intern", ["Autumn 2027"]),
+                                      "Fall 2027")
+
+
+def test_an_empty_filter_drops_nothing():
+    jobs = [_termed("Winter 2027 Intern", ["Winter 2027"])]
+    assert only_target_term(jobs, "") == jobs
+
+
+def test_the_term_gate_reads_the_title_when_no_term_is_published():
+    """ATS sources publish no term field; the season is in the title."""
+    assert names_a_different_term(_termed("Winter 2027 Software Intern", []),
+                                  "Summer 2027")

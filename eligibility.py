@@ -282,6 +282,102 @@ def drop_malformed(jobs: Iterable[Job]) -> List[Job]:
     return kept
 
 
+# A co-op is a full-time work term during the academic year, usually a
+# semester or two. It is not an internship you can take between school years,
+# and taking one means not being enrolled - which for a student on an F-1 visa
+# is a different conversation entirely.
+_COOP_RE = re.compile(r"\bco-?ops?\b", re.I)
+
+# "Intern/Co-op" names both, and those postings are real internships that also
+# accept co-op students. Only a title that names *only* co-op is excluded.
+_INTERN_WORD_RE = re.compile(r"\bintern(ship)?s?\b", re.I)
+
+
+def is_coop_only(job: Job) -> bool:
+    """Is this a co-op rather than an internship?
+
+    Checked on the title alone. A description mentioning a co-op programme
+    somewhere in its benefits blurb is not the same as a co-op posting.
+    """
+    title = job.title or ""
+    return bool(_COOP_RE.search(title)) and not _INTERN_WORD_RE.search(title)
+
+
+def exclude_coops(jobs: Iterable[Job]) -> List[Job]:
+    """Drop co-op postings, which require a term out of school."""
+    jobs = list(jobs)
+    kept = [job for job in jobs if not is_coop_only(job)]
+    dropped = len(jobs) - len(kept)
+    if dropped:
+        log.info("dropped %d co-op posting(s)", dropped)
+        for job in jobs:
+            if job not in kept:
+                log.debug("  co-op: %s - %s", job.company, job.title)
+    return kept
+
+
+_SEASON_RE = re.compile(r"\b(summer|fall|autumn|winter|spring)\b", re.I)
+_YEAR_RE = re.compile(r"\b(20\d{2})\b")
+
+
+def _season_and_year(text: str):
+    """The season and year a string names, either possibly None."""
+    season = _SEASON_RE.search(text or "")
+    year = _YEAR_RE.search(text or "")
+    name = season.group(1).lower() if season else None
+    if name == "autumn":            # the same term under two names
+        name = "fall"
+    return name, (year.group(1) if year else None)
+
+
+def names_a_different_term(job: Job, target: str) -> bool:
+    """Does this posting state a term other than the one being searched for?
+
+    The web-search adapter checked only the *year*, which let "Machine
+    Learning Intern/Co-op (Winter 2027)" through a Summer 2027 filter: the
+    year matched, and nothing looked at the season. A winter term is a
+    different job at a different time of year.
+
+    Silence is not a mismatch. Most ATS postings state no term at all, and
+    dropping those would discard the majority of the corpus - the same
+    reasoning as the sponsorship and degree gates.
+    """
+    want_season, want_year = _season_and_year(target)
+    if not want_season and not want_year:
+        return False
+
+    # The stated terms, plus the title, which is where a term is usually
+    # written even when the source publishes no term field.
+    stated = " ".join(job.terms or []) + " " + (job.title or "")
+    got_season, got_year = _season_and_year(stated)
+
+    if want_year and got_year and got_year != want_year:
+        return True
+    if want_season and got_season and got_season != want_season:
+        return True
+    return False
+
+
+def only_target_term(jobs: Iterable[Job],
+                     target: Optional[str] = None) -> List[Job]:
+    """Drop postings that name a term other than the configured one."""
+    target = target if target is not None else config.TERM_FILTER
+    jobs = list(jobs)
+    if not target:
+        return jobs
+
+    kept = [job for job in jobs if not names_a_different_term(job, target)]
+    dropped = len(jobs) - len(kept)
+    if dropped:
+        log.info("dropped %d posting(s) naming a term other than %s",
+                 dropped, target)
+        for job in jobs:
+            if job not in kept:
+                log.debug("  wrong term: %s - %s (%s)",
+                          job.company, job.title, job.terms)
+    return kept
+
+
 def only_internships(jobs: Iterable[Job]) -> List[Job]:
     """Drop anything that is not actually an internship.
 

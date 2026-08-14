@@ -24,7 +24,8 @@ from typing import List, Optional
 
 import config
 from delivery.email import DigestItem, send
-from eligibility import (drop_malformed, filter_eligible, only_internships,
+from eligibility import (drop_malformed, exclude_coops, filter_eligible,
+                         only_internships, only_target_term,
                          only_undergraduate_eligible)
 from freshness import filter_fresh
 from sources import build_sources, collect, deduplicate
@@ -73,6 +74,9 @@ def run(window_hours: Optional[int] = None, top_n: Optional[int] = None,
 
             jobs = drop_malformed(jobs)
             jobs = only_internships(jobs)
+            jobs = only_target_term(jobs)
+            if config.EXCLUDE_COOPS:
+                jobs = exclude_coops(jobs)
             counts["internships"] = len(jobs)
 
             if config.UNDERGRADUATE_ONLY:
