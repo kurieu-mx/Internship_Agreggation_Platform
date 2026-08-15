@@ -147,6 +147,7 @@ The two entry points share `apply_url.prepare`, so a posting added by hand gets 
 | `sources/` | Nine adapters behind one protocol — Greenhouse, Lever, Ashby, Workday, **Amazon**, two community feeds, web search, LinkedIn |
 | `eligibility.py` | Internship, term, co-op, degree and work-authorisation gates |
 | `freshness.py` | The 24-hour window, and what to do about sources that publish no date |
+| `sources/enrich.py` | Filling a shortlisted posting in from the ATS its own URL names |
 | `store.py` | SQLite: seen postings, sent digests, per-run cost |
 | `tailor/score.py` | Deterministic prefilter, then one model call to rank |
 | `tailor/keywords.py` | Posting vocabulary, intersected with what the profile can evidence |
@@ -232,7 +233,7 @@ $ make doctor
 | `make digest` | Build and send |
 | `python main.py --apply-url <url>` | Tailor and email one posting by link |
 | `make dashboard` | The same, in a browser, on the subscription rather than the API |
-| `make test` | 763 tests |
+| `make test` | 779 tests |
 
 `python main.py --cover-preview <company>` iterates on one cover letter without a full run; add `--no-research` to make it free.
 
@@ -347,6 +348,7 @@ Two things the backend does not change, and one it cannot:
 - **Web search and LinkedIn are the weakest legs.** Results are undated, unstructured, and rank below every other source. LinkedIn is reached through public web search — the site is never scraped — so coverage is whatever they choose to make publicly indexable.
 - **Handshake needs a browser cookie that expires.** Off by default. It is the only source that sees school-restricted postings, and the least durable thing here.
 - **One posting per company per day** is a deliberate trade, not a limitation, but it does mean a company posting several genuinely different roles is under-represented. The overflow appears in the digest as links.
+- **Most postings arrive with no text to inspect.** Measured: 84% of the corpus carries no description and 28 postings carried no location, so the sponsorship, degree and US gates run half-blind on the first pass. `sources/enrich.py` closes this for the postings that survive the freshness window by asking their own Greenhouse, Lever, Ashby or Workday board for what their source did not publish, and the gates then run a second time. It cannot help postings hosted somewhere with no readable API — TikTok, ByteDance and iCIMS between them account for most of what remains.
 - **The search-backed sources publish no location.** Measured: 43 of 43 results from web search and LinkedIn carried an empty location list, so the US filter has nothing to reject. LinkedIn's country subdomain (`ie.`, `fr.`, `in.`) is used as the country signal instead, which caught 10 of 14 on one run — but a non-LinkedIn result with no location is still kept, and could be anywhere.
 - **Company research depends on a fetchable marketing site.** Small firms with thin web presence yield nothing, and their letters are written about the role instead.
 - **Five large employers are unreachable by any source.** IBM, Google, Apple, Meta and Microsoft each run their own careers portal instead of an ATS with a public API, and some are bot-protected — a plain request to IBM returns HTTP 202 with an empty body. Six bespoke adapters was judged not worth the maintenance, so those arrive by hand:

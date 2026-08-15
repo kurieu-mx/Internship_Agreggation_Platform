@@ -501,3 +501,25 @@ def test_a_posting_offering_several_terms_qualifies_on_any_of_them():
 def test_several_terms_that_all_conflict_are_dropped():
     job = _termed("DERMS Intern", ["Fall 2027", "Winter 2027"])
     assert names_a_different_term(job, "Summer 2027")
+
+
+# -- the US gate, run after enrichment ---------------------------------------
+
+
+def test_a_known_non_us_location_is_dropped():
+    from eligibility import only_us
+
+    keep = Job(company="A", title="Intern", locations=["Austin, TX"],
+               field_category="Software Engineering")
+    drop = Job(company="B", title="Intern", locations=["Bratislava"],
+               field_category="Quant")
+    assert only_us([keep, drop]) == [keep]
+
+
+def test_a_posting_with_no_location_is_still_kept():
+    """Silence is not evidence - the same rule as sponsorship and degree."""
+    from eligibility import only_us
+
+    job = Job(company="A", title="Intern", locations=[],
+              field_category="Software Engineering")
+    assert only_us([job]) == [job]

@@ -390,6 +390,40 @@ def only_target_term(jobs: Iterable[Job],
     return kept
 
 
+def only_us(jobs: Iterable[Job]) -> List[Job]:
+    """Drop postings whose location is known and is not in the US.
+
+    Runs after enrichment rather than at collection, because at collection the
+    answer is usually "no location at all" - measured, 84% of the corpus
+    carries no description and 28 postings carried no location, so a US check
+    then has nothing to decide on. Once a posting's own ATS has been asked,
+    the field is real and this can act on it.
+
+    A posting still carrying no location is **kept**. Same principle as the
+    sponsorship and degree gates: silence is not evidence, and most postings
+    that reach here without one are ATS records the enricher could not match
+    rather than foreign roles in disguise.
+    """
+    from normalize import filter_us_locations
+
+    jobs = list(jobs)
+    kept, dropped = [], []
+    for job in jobs:
+        if not job.locations:
+            kept.append(job)
+        elif filter_us_locations(job.locations):
+            kept.append(job)
+        else:
+            dropped.append(job)
+
+    if dropped:
+        log.info("dropped %d posting(s) located outside the US", len(dropped))
+        for job in dropped:
+            log.debug("  non-US: %s - %s (%s)",
+                      job.company, job.title, ", ".join(job.locations))
+    return kept
+
+
 def only_internships(jobs: Iterable[Job]) -> List[Job]:
     """Drop anything that is not actually an internship.
 

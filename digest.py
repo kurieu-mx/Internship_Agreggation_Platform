@@ -25,8 +25,9 @@ from typing import List, Optional
 import config
 from delivery.email import DigestItem, send
 from eligibility import (drop_malformed, exclude_coops, filter_eligible,
-                         only_internships, only_target_term,
+                         only_internships, only_target_term, only_us,
                          only_undergraduate_eligible)
+from sources.enrich import enrich
 from freshness import filter_fresh
 from sources import build_sources, collect, deduplicate
 from store import open_store
@@ -95,6 +96,25 @@ def run(window_hours: Optional[int] = None, top_n: Optional[int] = None,
             counts["fresh"] = len(fresh)
             if already:
                 log.info("skipping %d posting(s) already sent", len(already))
+
+            # Only now, on the handful that survived the window, is it worth
+            # asking each posting's own ATS for what its source did not
+            # publish. 84% of the corpus carries no description, so the gates
+            # above ran half-blind; these run again with something to read.
+            #
+            # Both failures this exists for reached a real digest: a quant
+            # internship whose empty location field hid Bratislava, and a
+            # Prudential posting whose Workday text says they do not sponsor.
+            before_gates = len(fresh)
+            fresh = enrich(fresh)
+            fresh = only_us(fresh)
+            if config.UNDERGRADUATE_ONLY:
+                fresh = only_undergraduate_eligible(fresh)
+            fresh = filter_eligible(fresh)
+            if len(fresh) != before_gates:
+                log.info("after enrichment: %d of %d survive the gates a second time",
+                         len(fresh), before_gates)
+            counts["fresh"] = len(fresh)
 
             if not fresh:
                 log.info("nothing new inside the %dh window", window_hours)
