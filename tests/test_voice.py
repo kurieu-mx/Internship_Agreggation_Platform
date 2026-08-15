@@ -196,3 +196,59 @@ def test_the_letter_prompt_carries_the_rules():
     from tailor.cover import LETTER_SYSTEM
 
     assert voice.VOICE_RULES in LETTER_SYSTEM
+
+
+# -- the reframe, the hedge, and the metaphor --------------------------------
+
+
+@pytest.mark.parametrize("text", [
+    "It is not just a tool; it is a revolution.",
+    "This is not merely a job, it is a calling.",
+    "Not just a platform, but an ecosystem for developers everywhere.",
+])
+def test_the_negation_reframe_is_flagged(text):
+    assert any("reframe" in p for p in voice.problems(text))
+
+
+def test_an_ordinary_negation_is_not_a_reframe():
+    """"I did not use Rust" is a fact, not a rhetorical move."""
+    assert not any("reframe" in p for p in voice.problems(
+        "I did not use Rust on that project. I used Go instead."))
+
+
+@pytest.mark.parametrize("text", [
+    "It is worth noting that the pipeline held under load.",
+    "On the one hand the parser was faster.",
+    "That said, the deployment was straightforward.",
+    "The approach was arguably the simpler one.",
+])
+def test_hedging_is_flagged(text):
+    assert any("hedging" in p for p in voice.problems(text))
+
+
+@pytest.mark.parametrize("text", [
+    "Their platform sits at the heart of modern payments.",
+    "I want to work in the landscape of applied research.",
+    "The internship was a journey through distributed systems.",
+    "I enjoy understanding what happens under the hood.",
+    "The work helped bridge the gap between research and production.",
+])
+def test_stock_metaphors_are_flagged(text):
+    assert any("metaphor" in p for p in voice.problems(text))
+
+
+def test_literal_prose_carries_no_metaphor_flag():
+    assert not any("metaphor" in p for p in voice.problems(
+        "They run the systems other companies bill through. I wrote the "
+        "validation layer for one of them."))
+
+
+def test_the_prompt_forbids_metaphor_reframe_and_hedging():
+    for phrase in ("No metaphors", "reframe by negation", "Take the position"):
+        assert phrase in voice.VOICE_RULES
+
+
+def test_the_prompt_still_demands_perfect_grammar():
+    """Varying rhythm must not be read as licence for fragments or slang."""
+    assert "grammar must be perfect" in voice.VOICE_RULES
+    assert "No sentence" in voice.VOICE_RULES and "fragments" in voice.VOICE_RULES

@@ -21,6 +21,19 @@ good writing one sentence at a time and as machine writing over a page:
   "That is the same X as Y"   13 of 31 letters  one formula, every letter
 ===========================================================================
 
+Three more were added later, from the list of tells people name most often.
+They were rare or absent in this pipeline's output when added, which is the
+point: they are cheap to keep at zero and expensive to notice once shipped.
+
+  the negation reframe   "it is not just X, it is Y"
+  hedging                "it is worth noting", "on the one hand"
+  stock metaphor         "at the heart of", "a journey", "under the hood"
+
+Note what is deliberately *not* on either list: imperfect grammar. Varying
+the rhythm means varying sentence length, not writing fragments or slang.
+This is a document a recruiter judges the candidate on, and the target is a
+good writer being direct rather than a person typing quickly.
+
 The through-line is uniformity. A person writing five cover letters produces
 five different rhythms; this produced one rhythm thirty-one times. The em dash
 is the most visible symptom rather than the disease - banning it alone would
@@ -96,6 +109,46 @@ _PIVOT_RE = re.compile(
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
+# "It is not just a tool; it is a revolution." A negation-reframe used to
+# manufacture profundity, and one of the most recognisable machine cadences
+# there is. Already rare in this pipeline's output, and cheap to keep rare.
+MAX_REFRAMES = 0
+_REFRAME_RE = re.compile(
+    r"\b(?:it'?s|it is|this is|that'?s|that is|they'?re|they are)\s+not\s+"
+    r"(?:just|only|merely|simply)\b"
+    r"|\bnot\s+(?:just|only|merely|simply)\s+[^.;]{2,60}[;,]\s*(?:it'?s|it is|but)\b"
+    r"|\bnot\s+(?:a|an|the)\s+\w+[;,]\s*(?:it'?s|it is|but)\b",
+    re.I,
+)
+
+# Hedging that refuses to take a position. A cover letter is an argument for
+# one candidate; balance is not a virtue in it.
+MAX_HEDGES = 0
+_HEDGE_RE = re.compile(
+    r"\bit(?:'s| is) (?:important|worth) (?:to note|noting|mentioning)\b"
+    r"|\bon the one hand\b|\bon the other hand\b"
+    r"|\bthat (?:said|being said)\b"
+    r"|\bwhile (?:it'?s|it is) true\b"
+    r"|\bin many (?:ways|respects)\b"
+    r"|\barguably\b|\bto some extent\b|\bin some sense\b",
+    re.I,
+)
+
+# Figurative language. A cover letter's job is to say what someone did, and a
+# metaphor is a way of not saying it. These are the frames that recur - the
+# abstract-noun-as-place and the work-as-journey being the two worst.
+MAX_METAPHORS = 0
+_METAPHOR_RE = re.compile(
+    r"\b(?:at the (?:heart|core|intersection) of|in the (?:realm|space|world|landscape) of"
+    r"|the (?:landscape|tapestry|fabric|backbone|lifeblood|cornerstone|bedrock) of"
+    r"|a (?:journey|deep dive|north star|game[- ]changer|force multiplier)\b"
+    r"|(?:wear|wearing|wears) (?:many )?hats?\b"
+    r"|move the needle|paradigm shift|tip of the iceberg|double[- ]edged sword"
+    r"|bridge the gap between|the same (?:shape|flavou?r) of"
+    r"|under the hood|behind the scenes|from the ground up)\b",
+    re.I,
+)
+
 
 def letter_prose(letter: dict) -> str:
     """Just the sentences a reader reads, with the scaffolding left out.
@@ -129,6 +182,9 @@ def count_tells(text: str) -> Dict[str, float]:
         "colon_reveals": len(_COLON_REVEAL_RE.findall(text)),
         "tricolons": len(_TRICOLON_RE.findall(text)),
         "pivots": len(_PIVOT_RE.findall(text)),
+        "reframes": len(_REFRAME_RE.findall(text)),
+        "hedges": len(_HEDGE_RE.findall(text)),
+        "metaphors": len(_METAPHOR_RE.findall(text)),
         "longest_sentence": max(lengths),
         "mean_sentence": statistics.mean(lengths),
         "short_share": sum(1 for n in lengths if n < 12) / len(lengths),
@@ -166,6 +222,24 @@ def problems(text: str) -> List[str]:
             "Cut the \"That is the same shape of problem as...\" turn. Connect "
             "the experience to the role by stating what you did, without "
             "announcing the parallel."
+        )
+    if counts["reframes"] > MAX_REFRAMES:
+        found.append(
+            "Cut the \"it is not just X, it is Y\" reframe. State what the "
+            "thing is; the contrast adds drama, not information."
+        )
+    if counts["hedges"] > MAX_HEDGES:
+        found.append(
+            "Remove the hedging (\"it is worth noting\", \"on the other hand\", "
+            "\"that said\"). This is an argument for one candidate, so take the "
+            "position rather than balancing it."
+        )
+    if counts["metaphors"] > MAX_METAPHORS:
+        found.append(
+            f"There {'is' if counts['metaphors'] == 1 else 'are'} "
+            f"{int(counts['metaphors'])} stock metaphor(s) - \"at the heart of\", "
+            f"\"the landscape of\", \"a journey\", \"under the hood\". Say the "
+            f"literal thing instead."
         )
     if counts["longest_sentence"] > MAX_SENTENCE_WORDS:
         found.append(
@@ -251,9 +325,31 @@ they are not hypothetical:
   The third version is usually right. If the parallel needs stating, you have
   not made it clearly enough.
 
+- **No metaphors.** Not "at the heart of", "the landscape of", "a journey",
+  "under the hood", "bridge the gap", "move the needle", "wearing many hats".
+  A metaphor is a way of not saying the thing. Say the thing.
+
+      Instead of:  Their work sits at the heart of modern infrastructure.
+      Write:       They run the systems other companies bill through.
+
+- **Never reframe by negation.** No "it is not just X, it is Y", no "not a
+  tool, but a platform". The contrast manufactures significance the sentence
+  has not earned, and it is one of the most recognisable machine cadences
+  there is. State what the thing is and stop.
+
+- **Take the position.** No "it is worth noting", "on the one hand", "that
+  said", "arguably", "to some extent". This is an argument for one candidate.
+  Balance is a virtue in an essay and a weakness here.
+
 Write the way a competent engineer writes when they are being direct: plain
 sentences, concrete nouns, no rhetorical scaffolding.
 
-Before returning, reread what you wrote and check the two rules that are
-easiest to break without noticing: count the em dashes, and count the
-three-item lists. Nothing else in the pipeline will fix them for you."""
+A note on what varying the rhythm does **not** mean. Vary sentence length -
+some short, some long - but the grammar must be perfect. No sentence
+fragments, no deliberate typos, no casual slang, no contractions used to
+sound relaxed. This is a document a recruiter judges you on. The target is a
+good writer being direct, not a person typing quickly.
+
+Before returning, reread what you wrote and count two things, because they
+are the rules that get broken without noticing: the em dashes, and the
+three-item lists. Nothing downstream will fix either for you."""
