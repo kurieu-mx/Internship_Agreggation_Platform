@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 # "Intern" alone is too loose - it matches "Internal Audit Manager" and
 # "International Sales". Require a word boundary and one of the real forms.
 _INTERN_RE = re.compile(
-    r"\b(intern|internship|co-?op|industrial placement"
+    r"\b(intern(?:ship)?s?|co-?op|industrial placement"
     # Finance names its internships differently: "Summer Analyst" is the
     # undergraduate one and "Summer Associate" the graduate one. Both are
     # internships, and excluding them would quietly drop most bank and trading
@@ -53,7 +53,7 @@ _INTERN_RE = re.compile(
 _NOT_INTERN_RE = re.compile(
     r"\b(internal|international"
     r"|recruiter|recruiting|talent acquisition|university relations"
-    r"|intern(ship)?\s+(program\s+)?(manager|coordinator|lead)"
+    r"|intern(ship)?s?\s+(program\s+)?(manager|coordinator|lead)"
     r"|returning intern|full[- ]time|new ?grad(uate)?"
     # Rotational graduate schemes read like internships and are not: they are
     # entry-level permanent hires. "Investment Analyst Program", "Technology
@@ -171,7 +171,7 @@ _CATEGORY_RULES = [
                        r"|applied scien)\b"),
     ("Hardware", r"\b(hardware|electrical|firmware|asic|fpga|silicon|mechanical|rf)\b"),
     ("Product", r"\bproduct manage|\bpm intern|\bproduct design"),
-    ("Software Engineering", r"\b(software|swe|backend|back-end|frontend|front-end"
+    ("Software Engineering", r"\b(software|swe|back[- ]?end|front[- ]?end"
                              r"|full[- ]?stack|infrastructure|platform|systems|devops"
                              r"|site reliability|security|mobile|ios|android|web)\b"),
 ]
