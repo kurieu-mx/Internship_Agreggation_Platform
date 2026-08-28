@@ -36,22 +36,78 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Is it 3pm where it matters?
+      - name: Is this the run that should send today's digest?
         id: clock
-        run: |
-          HOUR=$(TZ="${DIGEST_TIMEZONE:-America/Chicago}" date +%H)
-          echo "local hour: $HOUR"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "manual run - proceeding"
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          elif [ "$HOUR" = "15" ]; then
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "not 3pm locally - this is the off-season cron, stopping"
-            echo "go=false" >> "$GITHUB_OUTPUT"
-          fi
         env:
           DIGEST_TIMEZONE: ${{ vars.DIGEST_TIMEZONE }}
+          EVENT_NAME: ${{ github.event_name }}
+          FIRED_CRON: ${{ github.event.schedule }}
+          THIS_RUN: ${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          TZONE="${DIGEST_TIMEZONE:-America/Chicago}"
+          echo "local time: $(TZ="$TZONE" date '+%F %H:%M %Z')"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "manual run - proceeding"
+            echo "go=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          # Which of the two crons is 3pm local *today*? Derived rather than
+          # hardcoded, so this stays right across a DST change and if
+          # DIGEST_TIMEZONE is ever repointed.
+          WANT=""
+          for H in 20 21; do
+            if [ "$(TZ="$TZONE" date -d "today ${H}:00 UTC" +%H)" = "15" ]; then
+              WANT="0 ${H} * * *"
+            fi
+          done
+          # Neither lands on 3pm (a timezone this pair was not written for).
+          # Pick the earlier one rather than never running at all.
+          [ -z "$WANT" ] && WANT="0 20 * * *"
+          echo "cron: fired='${FIRED_CRON}' authoritative-today='${WANT}'"
+
+          if [ "$FIRED_CRON" = "$WANT" ]; then
+            # Deliberately no check on the current hour. GitHub's scheduler is
+            # best-effort: on 2026-08-26 this cron was dropped outright and its
+            # partner arrived 2h41m late, so an exact "is it 15:00" test failed
+            # and the day was skipped silently. The cron that fired is the one
+            # that was scheduled, however late it actually got here.
+            echo "authoritative cron - proceeding"
+            echo "go=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+
+          # The off-season cron. Normally it stops here. But if the
+          # authoritative one never arrived, this is the day's only chance, so
+          # proceed when no run in the last 8 hours actually reached the digest
+          # step (a guard-exit leaves that step "skipped", which does not count).
+          echo "off-season cron - checking whether today's digest already ran"
+          CUTOFF=$(date -u -d '8 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          ALREADY=no
+          for ID in $(gh run list --repo "$GH_REPO" --workflow=daily-digest.yml \
+                        --limit 30 --json databaseId,createdAt \
+                        --jq "[.[] | select(.createdAt > \"$CUTOFF\")] | .[].databaseId" \
+                      2>/dev/null); do
+            [ "$ID" = "$THIS_RUN" ] && continue
+            if gh run view "$ID" --repo "$GH_REPO" --json jobs \
+                 --jq '.jobs[].steps[] | select(.name == "Run the digest") | .conclusion' \
+                 2>/dev/null | grep -qv '^skipped$'; then
+              ALREADY=yes; break
+            fi
+          done
+
+          if [ "$ALREADY" = "yes" ]; then
+            echo "today's digest already ran - stopping"
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            # Fails open: if the API calls above returned nothing, a duplicate
+            # run is cheap (the sent-store suppresses every posting already
+            # mailed) while a missed day is not.
+            echo "no digest yet today - proceeding as catch-up"
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/checkout@v4
         if: steps.clock.outputs.go == 'true'

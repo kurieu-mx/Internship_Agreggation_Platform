@@ -25,6 +25,13 @@ from sources.base import FeedError
         "Software Engineer Intern",
         "Campus Quantitative Trader (Intern)",
         "Machine Learning Research Internship",
+        # Plural forms. NVIDIA lists its whole campus programme this way
+        # ("NVIDIA 2027 Internships: Software Engineering"), and Disney posts
+        # "Computer Engineering Interns" - a whole board's worth of postings
+        # dropped on a missing 's'.
+        "NVIDIA 2027 Internships: Software Engineering",
+        "WDW Computer Science / Computer Engineering Interns, Spring 2027",
+        "GPU Internships - Design Verification",
         "Engineering Co-op",
         "Software Engineering Coop",
         "Summer Analyst, Technology",
@@ -41,6 +48,7 @@ def test_internship_titles_are_recognised(title):
         "International Sales Lead",        # ditto
         "Staff Software Engineer",
         "University Recruiter, Internship Program",
+        "Interns Program Manager",         # plural, still the other side of the table
         "New Grad Software Engineer",
         "Software Engineer, Full-Time",
         "Senior IT Internal Auditor",
@@ -144,6 +152,11 @@ def test_implausible_years_are_ignored():
         ("Product Management Intern", "Product"),
         ("Software Engineer Intern", "Software Engineering"),
         ("Backend Engineering Intern", "Software Engineering"),
+        # The same word with a space in it. IBM writes "Back End Developer",
+        # and reading that as "Other" dropped it before the digest saw it.
+        ("Back End Developer Intern", "Software Engineering"),
+        ("Back-End Developer Intern", "Software Engineering"),
+        ("Front End Engineer Intern", "Software Engineering"),
         ("Site Reliability Engineer Intern", "Software Engineering"),
         ("Marketing Intern", "Other"),
     ],

@@ -22,6 +22,14 @@ def job(title="Software Engineer Intern", description="", sponsorship="Unknown")
         "No visa sponsorship is provided.",
         "Candidates must be authorized to work without the need for sponsorship.",
         "We will not sponsor employment visas.",
+        # The commonest phrasing of all, and the one this used to miss: the
+        # pattern demanded the literal words "without the need for", so a real
+        # Hartford posting closed to sponsorship read as silence, was kept, and
+        # took a tailoring slot in a live digest.
+        "Candidates must be authorized to work in the US without company "
+        "sponsorship now or in the future.",
+        "Must be legally authorized to work in the United States without sponsorship.",
+        "Applicants must be able to work without current or future visa sponsorship.",
     ],
 )
 def test_a_stated_refusal_to_sponsor_is_detected(text):
@@ -80,6 +88,11 @@ def test_a_restriction_in_the_title_is_caught_too():
         "We will sponsor H-1B visas after conversion.",
         "Visa sponsorship is available for this role.",
         "We sponsor candidates requiring work authorization.",
+        # "without" and "sponsorship" in the same paragraph but different
+        # sentences. The word budget in the pattern stops at punctuation, so
+        # widening it to catch "without company sponsorship" must not turn this
+        # into a refusal.
+        "You will grow without limit. Visa sponsorship is available for interns.",
     ],
 )
 def test_an_offer_to_sponsor_is_not_read_as_a_refusal(text):

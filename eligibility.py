@@ -42,7 +42,14 @@ _NO_SPONSORSHIP_RE = re.compile(
     r"(?:\w+\s+){0,4}?sponsor"
     r"|sponsorship\s+is\s+not\s+(?:available|offered|provided)"
     r"|no\s+(?:visa\s+)?sponsorship"
-    r"|without\s+the\s+need\s+for\s+(?:current\s+or\s+future\s+)?(?:visa\s+)?sponsorship"
+    # "without ... sponsorship" in any of its house styles. The original form
+    # here required the exact words "without the need for", which missed the
+    # commonest phrasing of all - "authorized to work in the US without company
+    # sponsorship now or in the future". That read as silence, and silence is
+    # kept, so a Hartford posting closed to sponsorship took a tailoring slot in
+    # a real digest. The word budget stops at punctuation, so this cannot reach
+    # across a sentence boundary into an unrelated "Sponsorship is available".
+    r"|without\s+(?:\w+\s+){0,7}?sponsorship"
     r"|not\s+(?:be\s+)?(?:able|eligible)\s+to\s+sponsor",
     re.I,
 )
