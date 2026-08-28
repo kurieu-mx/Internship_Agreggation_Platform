@@ -96,15 +96,34 @@ class AmazonSource:
     rank = 12          # a first-party board, same tier as the ATS adapters
 
     def __init__(self, queries: Optional[List[str]] = None,
-                 session: Optional[requests.Session] = None):
+                 session: Optional[requests.Session] = None,
+                 business_categories: Optional[List[str]] = None):
         self.queries = queries if queries is not None else config.AMAZON_QUERIES
+        self.business_categories = (
+            business_categories if business_categories is not None
+            else config.AMAZON_BUSINESS_CATEGORIES
+        )
         self.session = session or requests.Session()
 
     def _search(self, query: str) -> List[Dict[str, Any]]:
-        """Every page of one query, oldest postings included.
+        """Every page matching one ``base_query`` term."""
+        return self._fetch({"base_query": query}, str(query))
+
+    def _search_category(self, category: str) -> List[Dict[str, Any]]:
+        """Every page in one business category.
+
+        A separate seam from :meth:`_search` because it answers a different
+        question - "what is filed as a student role" rather than "what matches
+        this word" - and because the two are merged, not intersected.
+        """
+        return self._fetch({"business_category[]": category},
+                           f"business_category={category}")
+
+    def _fetch(self, criteria: Dict[str, str], label: str) -> List[Dict[str, Any]]:
+        """Every page of one search, oldest postings included.
 
         A failure part-way through keeps the pages already collected rather
-        than discarding the query: a partial board beats no board, and the
+        than discarding the search: a partial board beats no board, and the
         first page is the recent end of the sort.
         """
         jobs: List[Dict[str, Any]] = []
@@ -114,19 +133,22 @@ class AmazonSource:
                 response = self.session.get(
                     SEARCH_URL,
                     params={
-                        "base_query": query,
+                        # `country` is honoured, though only visibly so once a
+                        # search is narrow enough not to hit the 10,000-hit
+                        # ceiling the API reports for everything broader.
                         "country": "USA",
                         "result_limit": PAGE_SIZE,
                         "sort": "recent",
                         "offset": offset,
+                        **criteria,
                     },
                     headers=_headers(), timeout=25,
                 )
                 response.raise_for_status()
                 payload = response.json()
             except (requests.RequestException, ValueError) as exc:
-                log.warning("amazon: search for %r failed at offset %d: %s",
-                            query, offset, exc)
+                log.warning("amazon: search for %s failed at offset %d: %s",
+                            label, offset, exc)
                 break
 
             page_jobs = payload.get("jobs") or []
@@ -175,21 +197,22 @@ class AmazonSource:
         )
 
     def scrape(self) -> List[Job]:
-        if not self.queries:
+        if not self.queries and not self.business_categories:
             log.info("amazon: no queries configured")
             return []
 
         jobs: List[Job] = []
         seen = set()
-        for query in self.queries:
-            for raw in self._search(query):
+        searches = ([(self._search, q) for q in self.queries]
+                    + [(self._search_category, c) for c in self.business_categories])
+        for run, term in searches:
+            for raw in run(term):
                 job = self._build(raw)
                 if job is None or job.url in seen:
                     continue
                 seen.add(job.url)
                 jobs.append(job)
 
-        log.info("amazon: %d posting(s) from %d quer%s",
-                 len(jobs), len(self.queries),
-                 "y" if len(self.queries) == 1 else "ies")
+        log.info("amazon: %d posting(s) from %d search%s",
+                 len(jobs), len(searches), "" if len(searches) == 1 else "es")
         return jobs

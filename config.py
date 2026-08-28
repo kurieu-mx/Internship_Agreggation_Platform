@@ -176,6 +176,21 @@ AMAZON_QUERIES = [
     if q.strip()
 ]
 
+# base_query matches whole words, so "intern" does not match a posting titled
+# "...Internship". Five student postings were invisible for that reason alone,
+# among them the Applied Science internships - which are AI / ML / Data, and
+# so exactly the roles that should reach the digest when their Summer variant
+# opens. Searching "internship" as a term is not the answer: it matches 1660
+# US postings on body text to surface about fifteen real ones.
+#
+# amazon.jobs also indexes student roles under a business category, which is
+# 51 postings and one request. Swept alongside the queries and merged by URL.
+AMAZON_BUSINESS_CATEGORIES = [
+    c.strip()
+    for c in _env("AMAZON_BUSINESS_CATEGORIES", "studentprograms").split(",")
+    if c.strip()
+]
+
 # Board tokens for the direct-ATS adapters.
 COMPANIES_FILE = _env("COMPANIES_FILE", "companies.yml")
 
