@@ -115,3 +115,87 @@ def test_a_failed_search_does_not_raise(monkeypatch):
 
     monkeypatch.setattr(source.session, "get", _boom)
     assert source.scrape() == []
+
+
+class _Page:
+    """One search.json response."""
+
+    def __init__(self, jobs):
+        self._jobs = jobs
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"jobs": self._jobs}
+
+
+def _paged(monkeypatch, source, pages):
+    """Serve `pages` in order, recording the offset each request asked for."""
+    seen = []
+
+    def _get(url, params=None, **kw):
+        seen.append(params["offset"])
+        index = params["offset"] // 50
+        return _Page(pages[index] if index < len(pages) else [])
+
+    monkeypatch.setattr(source.session, "get", _get)
+    return seen
+
+
+def test_a_full_page_is_followed_by_the_next(monkeypatch):
+    """A query with 54 results used to return the first 50 and lose the rest."""
+    source = AmazonSource(queries=["intern"])
+    first = [dict(RAW, job_path=f"/en/jobs/{n}/intern", title="Software Engineer Intern")
+             for n in range(50)]
+    second = [dict(RAW, job_path=f"/en/jobs/{n}/intern", title="Software Engineer Intern")
+              for n in range(50, 54)]
+    offsets = _paged(monkeypatch, source, [first, second])
+
+    assert len(source.scrape()) == 54
+    assert offsets == [0, 50]
+
+
+def test_a_short_page_stops_the_walk(monkeypatch):
+    """No request is spent confirming that a partial page was the last one."""
+    source = AmazonSource(queries=["intern"])
+    offsets = _paged(monkeypatch, source, [[RAW]])
+
+    assert len(source.scrape()) == 1
+    assert offsets == [0]
+
+
+def test_paging_stops_at_the_ceiling(monkeypatch):
+    """A query broad enough to never run short still terminates."""
+    from sources.amazon import MAX_PAGES
+
+    source = AmazonSource(queries=["intern"])
+    full = [dict(RAW, job_path=f"/en/jobs/{n}/intern") for n in range(50)]
+    offsets = _paged(monkeypatch, source, [full] * (MAX_PAGES + 3))
+
+    source.scrape()
+    assert offsets == [n * 50 for n in range(MAX_PAGES)]
+
+
+def test_a_failure_mid_walk_keeps_the_earlier_pages(monkeypatch):
+    """A partial board beats no board - and page one is the recent end."""
+    import requests
+
+    source = AmazonSource(queries=["intern"])
+    first = [dict(RAW, job_path=f"/en/jobs/{n}/intern") for n in range(50)]
+
+    def _get(url, params=None, **kw):
+        if params["offset"] == 0:
+            return _Page(first)
+        raise requests.ConnectionError("no route")
+
+    monkeypatch.setattr(source.session, "get", _get)
+    assert len(source.scrape()) == 50
+
+
+def test_the_default_query_is_broad_enough_to_survive_the_category_gate():
+    """The old default matched one posting, categorised Other, which prefilter
+    dropped - so Amazon could never appear in a digest at all."""
+    import config
+
+    assert config.AMAZON_QUERIES == ["intern"]

@@ -18,10 +18,12 @@ That last part matters downstream - the undergraduate gate reads requirement
 text, and Amazon states its degree requirement in ``basic_qualifications``
 rather than burying it in prose.
 
-Scope is deliberately narrow. ``AMAZON_QUERIES`` defaults to the one search
-that was asked for; Amazon posts thousands of roles and a broad query would
-swamp the digest with warehouse and operations postings that the category
-filter would then have to throw away.
+``AMAZON_QUERIES`` defaults to a bare "intern". ``base_query`` requires every
+term to match, so a role-shaped phrase is far narrower than it looks - the
+original "automation engineer intern" matched a single posting, and that one
+was categorised Other and dropped at prefilter, so Amazon reached the digest
+zero times. The operations postings a bare query pulls in are harmless: the
+category gate drops them, and the shortlist takes at most one Amazon role.
 """
 
 import logging
@@ -41,9 +43,15 @@ log = logging.getLogger(__name__)
 SEARCH_URL = "https://www.amazon.jobs/en/search.json"
 JOB_BASE = "https://www.amazon.jobs"
 
-# How many results per query. Amazon caps the page size; this is one request
-# per query and plenty for a narrow search.
+# Amazon caps a page at 50 and honours ``offset``, so a query that fills a page
+# always has more behind it. A single request used to be "plenty for a narrow
+# search", which was true only while the search was narrow: "intern" has 54
+# results, and the unpaged version silently returned the first 50.
 PAGE_SIZE = 50
+
+# A ceiling, not a target - the loop stops as soon as a short page arrives.
+# Guards against a query broad enough to walk the whole catalogue.
+MAX_PAGES = 8
 
 
 def _headers() -> Dict[str, str]:
@@ -93,24 +101,42 @@ class AmazonSource:
         self.session = session or requests.Session()
 
     def _search(self, query: str) -> List[Dict[str, Any]]:
-        try:
-            response = self.session.get(
-                SEARCH_URL,
-                params={
-                    "base_query": query,
-                    "country": "USA",
-                    "result_limit": PAGE_SIZE,
-                    "sort": "recent",
-                    "offset": 0,
-                },
-                headers=_headers(), timeout=25,
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except (requests.RequestException, ValueError) as exc:
-            log.warning("amazon: search for %r failed: %s", query, exc)
-            return []
-        return payload.get("jobs") or []
+        """Every page of one query, oldest postings included.
+
+        A failure part-way through keeps the pages already collected rather
+        than discarding the query: a partial board beats no board, and the
+        first page is the recent end of the sort.
+        """
+        jobs: List[Dict[str, Any]] = []
+        for page in range(MAX_PAGES):
+            offset = page * PAGE_SIZE
+            try:
+                response = self.session.get(
+                    SEARCH_URL,
+                    params={
+                        "base_query": query,
+                        "country": "USA",
+                        "result_limit": PAGE_SIZE,
+                        "sort": "recent",
+                        "offset": offset,
+                    },
+                    headers=_headers(), timeout=25,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except (requests.RequestException, ValueError) as exc:
+                log.warning("amazon: search for %r failed at offset %d: %s",
+                            query, offset, exc)
+                break
+
+            page_jobs = payload.get("jobs") or []
+            jobs.extend(page_jobs)
+            # A short page is the last page. Amazon returns no total worth
+            # trusting, so the page length is the signal.
+            if len(page_jobs) < PAGE_SIZE:
+                break
+
+        return jobs
 
     def _build(self, raw: Dict[str, Any]) -> Optional[Job]:
         title = str(raw.get("title") or "").strip()

@@ -155,13 +155,24 @@ SOURCES = [
 ]
 
 # Amazon runs its own portal, not an ATS board, but publishes a plain JSON
-# search that robots.txt permits. Scoped narrowly on purpose: Amazon lists
-# thousands of roles, and a broad query would fill the digest with warehouse
-# and operations postings for the category filter to throw away again.
-# Comma-separated; widen when you want more of their catalogue.
+# search that robots.txt permits.
+#
+# One bare "intern" rather than a role-shaped phrase. `base_query` matches all
+# terms, so "software engineer intern" returned 5 postings and the previous
+# default, "automation engineer intern", returned exactly 1 - which was
+# categorised Other and so dropped at prefilter, meaning Amazon could never
+# reach the digest at all. "intern" returns 54, of which 27 are internships by
+# title and 6 survive TARGET_CATEGORIES. Adding "internship" or "co-op"
+# contributes no further internship-titled postings, only loose full-text
+# matches on the body, so they are deliberately absent.
+#
+# The warehouse and operations roles this pulls in ("Area Manager Intern") are
+# not a concern: prefilter drops every category outside TARGET_CATEGORIES, and
+# the shortlist caps each company at one posting regardless.
+# Comma-separated; narrow it when you want less of their catalogue.
 AMAZON_QUERIES = [
     q.strip()
-    for q in _env("AMAZON_QUERIES", "automation engineer intern").split(",")
+    for q in _env("AMAZON_QUERIES", "intern").split(",")
     if q.strip()
 ]
 
