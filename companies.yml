@@ -20,6 +20,7 @@ greenhouse:
   - {token: imc, name: IMC Trading}
   - {token: point72, name: Point72}
   - {token: optiverus, name: Optiver}   # not `optiver`: that board resolves and is empty
+  - {token: xantium, name: Xantium}
   # --- AI / ML ---
   - {token: anthropic, name: Anthropic}
   - {token: scaleai, name: Scale AI}

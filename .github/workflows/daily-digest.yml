@@ -1,13 +1,26 @@
 name: Daily internship digest
 
-# GitHub's scheduler is UTC-only, so hitting 3pm local year-round takes two
-# entries plus a guard. One fires during CDT, the other during CST; the guard
+# GitHub's scheduler is UTC-only, so hitting a fixed local time year-round takes
+# two entries plus a guard. One fires during CDT, the other during CST; the guard
 # below exits the run that is an hour off, so exactly one proceeds on any given
 # day. A single UTC cron would drift by an hour twice a year.
+#
+# Two things about the times themselves, both learned from measurement:
+#
+# The minute is 23, not 0. GitHub queues scheduled workflows and the top of the
+# hour is when everyone else's are queued too. Their own docs say to expect
+# delay and to avoid the start of the hour.
+#
+# The target is 13:23 local, not 15:00, because the queue delay is real and has
+# grown. Measured across every scheduled run: 13-38 minutes late from Aug 13-25,
+# then 79-156 minutes from Aug 26 onward, with four runs 3-8 hours late. Aiming
+# at 15:00 meant arriving at 17:30. Aiming at 13:23 puts a typical day near
+# 13:45 and a bad day near 16:00. Nothing is lost by running earlier: the
+# freshness window is measured back from the run, not from a wall-clock hour.
 on:
   schedule:
-    - cron: '0 20 * * *'   # 15:00 America/Chicago while CDT
-    - cron: '0 21 * * *'   # 15:00 America/Chicago while CST
+    - cron: '23 18 * * *'   # 13:23 America/Chicago while CDT
+    - cron: '23 19 * * *'   # 13:23 America/Chicago while CST
   workflow_dispatch:
     inputs:
       window_hours:
@@ -48,6 +61,10 @@ jobs:
         run: |
           set -uo pipefail
           TZONE="${DIGEST_TIMEZONE:-America/Chicago}"
+          # Kept next to the cron entries above; changing the schedule means
+          # changing these two and nothing else.
+          TARGET_HOUR=13
+          CRON_MINUTE=23
           echo "local time: $(TZ="$TZONE" date '+%F %H:%M %Z')"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
@@ -59,15 +76,33 @@ jobs:
           # hardcoded, so this stays right across a DST change and if
           # DIGEST_TIMEZONE is ever repointed.
           WANT=""
-          for H in 20 21; do
-            if [ "$(TZ="$TZONE" date -d "today ${H}:00 UTC" +%H)" = "15" ]; then
-              WANT="0 ${H} * * *"
+          for H in 18 19; do
+            if [ "$(TZ="$TZONE" date -d "today ${H}:${CRON_MINUTE} UTC" +%H)" = "$TARGET_HOUR" ]; then
+              WANT="${CRON_MINUTE} ${H} * * *"
             fi
           done
-          # Neither lands on 3pm (a timezone this pair was not written for).
-          # Pick the earlier one rather than never running at all.
-          [ -z "$WANT" ] && WANT="0 20 * * *"
+          # Neither lands on the target (a timezone this pair was not written
+          # for). Pick the earlier one rather than never running at all.
+          [ -z "$WANT" ] && WANT="${CRON_MINUTE} 18 * * *"
           echo "cron: fired='${FIRED_CRON}' authoritative-today='${WANT}'"
+
+          # How late GitHub actually delivered this one. Logged so the drift
+          # that forced the times above stays visible in the run itself,
+          # instead of having to be reconstructed from run timestamps after
+          # somebody notices the digest arriving in the evening.
+          #
+          # Only for the authoritative cron. The off-season one's nominal time
+          # is an hour that has not happened yet today, so its "delay" is a
+          # negative number that means nothing.
+          if [ -n "$FIRED_CRON" ] && [ "$FIRED_CRON" = "$WANT" ]; then
+            FIRED_H="${FIRED_CRON#* }"; FIRED_H="${FIRED_H%% *}"   # "23 18 * * *" -> 18
+            NOMINAL=$(date -u -d "today ${FIRED_H}:${CRON_MINUTE}" +%s 2>/dev/null || echo "")
+            if [ -n "$NOMINAL" ]; then
+              LATE=$(( ( $(date -u +%s) - NOMINAL ) / 60 ))
+              [ "$LATE" -lt 0 ] && LATE=0
+              echo "scheduler delay: ${LATE} minute(s) behind ${FIRED_H}:${CRON_MINUTE} UTC"
+            fi
+          fi
 
           if [ "$FIRED_CRON" = "$WANT" ]; then
             # Deliberately no check on the current hour. GitHub's scheduler is
