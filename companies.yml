@@ -21,12 +21,14 @@ greenhouse:
   - {token: point72, name: Point72}
   - {token: optiverus, name: Optiver}   # not `optiver`: that board resolves and is empty
   - {token: xantium, name: Xantium}
+  - {token: oldmissioncapital, name: Old Mission Capital}   # not `oldmission`: 404
   # --- AI / ML ---
   - {token: anthropic, name: Anthropic}
   - {token: scaleai, name: Scale AI}
   - {token: databricks, name: Databricks}
   # --- robotics / autonomy (closest to the Merlin Drones work) ---
   - {token: waymo, name: Waymo}
+  - {token: flyzipline, name: Zipline}   # not `zipline`: that token 404s
   - {token: nuro, name: Nuro}
   - {token: andurilindustries, name: Anduril}
   - {token: samsara, name: Samsara}
@@ -68,6 +70,9 @@ greenhouse:
   - {token: roblox, name: Roblox}
   - {token: riotgames, name: Riot Games}
   - {token: epicgames, name: Epic Games}
+  # --- energy / bio deep tech ---
+  - {token: generalmatter, name: General Matter}
+  - {token: colossalbiosciences, name: Colossal Biosciences}   # not `colossal`: 404
 
 lever:
   - {token: palantir, name: Palantir}
@@ -107,6 +112,7 @@ ashby:
   - {token: linear, name: Linear}
   - {token: replit, name: Replit}
   - {token: deel, name: Deel}
+  - {token: rilla, name: Rilla}
 
 # Workday - what large enterprises run their careers site on. The three ATS
 # platforms above skew startup and mid-size; without this block the digest was
