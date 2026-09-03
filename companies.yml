@@ -138,6 +138,11 @@ workday:
   - {tenant: ngc, host: wd1, site: Northrop_Grumman_External_Site, name: Northrop Grumman}
   - {tenant: nvidia, host: wd5, site: NVIDIAExternalCareerSite, name: NVIDIA}
   - {tenant: paypal, host: wd1, site: jobs, name: PayPal}
+  # RBC's student roles are on a *separate* site from its main one, and the
+  # slug says "PrivatePosting" while being fully public. Probing the obvious
+  # names (External, Careers) 404s on every host - this is the only one that
+  # resolves, and without it RBC reaches the digest via Simplify alone.
+  - {tenant: rbc, host: wd3, site: ExternalPrivatePostingStudents, name: RBC}
   - {tenant: salesforce, host: wd12, site: External_Career_Site, name: Salesforce}
   - {tenant: sonyglobal, host: wd1, site: SonyGlobalCareers, name: Sony}
   - {tenant: target, host: wd5, site: targetcareers, name: Target}
